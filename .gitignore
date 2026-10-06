@@ -5,6 +5,7 @@ node_modules/
 .env
 .env.local
 .env.production
+!.env.example
 
 # Logs
 logs/
@@ -20,3 +21,16 @@ Thumbs.db
 # Editor
 .vscode/
 .idea/
+
+# Build output
+dist/
+build/
+
+# Coverage
+coverage/
+.nyc_output/
+
+# Cache
+.cache/
+.parcel-cache/
+.vite/
