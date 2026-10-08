@@ -18,19 +18,14 @@ connectDB();
 
 const app = express();
 
-/* =========================
-   CORS
-========================= */
-
 app.use(
   cors({
     origin: [
-      "https://speedexp.in",
-      "https://www.speedexp.in",
       "http://localhost:5173",
       "http://localhost:3000",
+      "https://speedexp.in",
+      "https://www.speedexp.in",
     ],
-
     methods: [
       "GET",
       "POST",
@@ -39,17 +34,12 @@ app.use(
       "DELETE",
       "OPTIONS",
     ],
-
     allowedHeaders: [
       "Content-Type",
       "Authorization",
     ],
   })
 );
-
-/* =========================
-   BODY PARSER
-========================= */
 
 app.use(express.json());
 
@@ -59,18 +49,15 @@ app.use(
   })
 );
 
-/* =========================
+/* =====================================================
    ROOT
-========================= */
+===================================================== */
 
 app.get("/", (req, res) => {
-  res.json({
+  res.status(200).json({
     success: true,
     message: "Speed Express API is running.",
     endpoints: {
-      health:
-        "GET /api/health",
-
       createShipment:
         "POST /api/shipments",
 
@@ -85,13 +72,16 @@ app.get("/", (req, res) => {
 
       shippingLabel:
         "GET /api/shipments/:trackingNumber/label",
+
+      testLabelRoute:
+        "GET /api/shipments/test-label-route",
     },
   });
 });
 
-/* =========================
+/* =====================================================
    HEALTH CHECK
-========================= */
+===================================================== */
 
 app.get("/api/health", (req, res) => {
   res.status(200).json({
@@ -100,18 +90,18 @@ app.get("/api/health", (req, res) => {
   });
 });
 
-/* =========================
+/* =====================================================
    SHIPMENT ROUTES
-========================= */
+===================================================== */
 
 app.use(
   "/api/shipments",
   shipmentRoutes
 );
 
-/* =========================
+/* =====================================================
    404
-========================= */
+===================================================== */
 
 app.use((req, res) => {
   res.status(404).json({
@@ -121,12 +111,15 @@ app.use((req, res) => {
   });
 });
 
-/* =========================
+/* =====================================================
    ERROR HANDLER
-========================= */
+===================================================== */
 
 app.use((err, req, res, next) => {
-  console.error("SERVER ERROR:", err);
+  console.error(
+    "SERVER ERROR:",
+    err
+  );
 
   if (res.headersSent) {
     return next(err);
@@ -134,32 +127,37 @@ app.use((err, req, res, next) => {
 
   res.status(500).json({
     success: false,
-    message: "Internal server error.",
-    error: err.message,
+    message:
+      "Internal server error.",
+    error:
+      err.message,
   });
 });
 
-/* =========================
+/* =====================================================
    START SERVER
-========================= */
+===================================================== */
 
 const PORT =
   process.env.PORT || 5000;
 
-app.listen(PORT, () => {
-  console.log(
-    "=============================================="
-  );
+app.listen(
+  PORT,
+  () => {
+    console.log(
+      "=============================================="
+    );
 
-  console.log(
-    `Speed Express API running on port ${PORT}`
-  );
+    console.log(
+      `Speed Express API running on port ${PORT}`
+    );
 
-  console.log(
-    `http://localhost:${PORT}`
-  );
+    console.log(
+      `http://localhost:${PORT}`
+    );
 
-  console.log(
-    "=============================================="
-  );
-});
+    console.log(
+      "=============================================="
+    );
+  }
+);

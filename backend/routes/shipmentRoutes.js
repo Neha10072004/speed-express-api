@@ -15,19 +15,34 @@ const generateShippingLabel = require(
 
 const router = express.Router();
 
-console.log("==============================================");
-console.log("SHIPMENT ROUTES LOADED");
-console.log("File:", __filename);
-console.log("==============================================");
+console.log(
+  "=============================================="
+);
+
+console.log(
+  "SHIPMENT ROUTES LOADED"
+);
+
+console.log(
+  "FILE:",
+  __filename
+);
+
+console.log(
+  "=============================================="
+);
 
 /* =====================================================
    TEST LABEL ROUTE
-   GET /api/shipments/test-label-route
+
+   GET
+   /api/shipments/test-label-route
 ===================================================== */
 
 router.get(
   "/test-label-route",
   (req, res) => {
+
     console.log(
       "TEST LABEL ROUTE CALLED"
     );
@@ -42,7 +57,9 @@ router.get(
 
 /* =====================================================
    CREATE SHIPMENT
-   POST /api/shipments
+
+   POST
+   /api/shipments
 ===================================================== */
 
 router.post(
@@ -52,7 +69,9 @@ router.post(
 
 /* =====================================================
    GET ALL SHIPMENTS
-   GET /api/shipments
+
+   GET
+   /api/shipments
 ===================================================== */
 
 router.get(
@@ -62,22 +81,26 @@ router.get(
 
 /* =====================================================
    SHIPPING LABEL
-   GET /api/shipments/:trackingNumber/label
+
+   GET
+   /api/shipments/:trackingNumber/label
 
    IMPORTANT:
-   This route MUST come before:
-   /:trackingNumber
+   This MUST be BEFORE /:trackingNumber
 ===================================================== */
 
 router.get(
   "/:trackingNumber/label",
   async (req, res) => {
+
     try {
-      const trackingNumber = String(
-        req.params.trackingNumber || ""
-      )
-        .trim()
-        .toUpperCase();
+
+      const trackingNumber =
+        String(
+          req.params.trackingNumber || ""
+        )
+          .trim()
+          .toUpperCase();
 
       console.log(
         "=============================================="
@@ -96,21 +119,15 @@ router.get(
         "=============================================="
       );
 
-      /* ---------------------------------------------
-         Validate tracking number
-      --------------------------------------------- */
-
       if (!trackingNumber) {
+
         return res.status(400).json({
           success: false,
           message:
             "Tracking Number is required.",
         });
-      }
 
-      /* ---------------------------------------------
-         Find shipment
-      --------------------------------------------- */
+      }
 
       const shipment =
         await Shipment.findOne({
@@ -119,6 +136,7 @@ router.get(
         });
 
       if (!shipment) {
+
         console.log(
           "SHIPMENT NOT FOUND:",
           trackingNumber
@@ -129,16 +147,13 @@ router.get(
           message:
             `Shipment not found: ${trackingNumber}`,
         });
+
       }
 
       console.log(
         "SHIPMENT FOUND:",
         shipment.trackingNumber
       );
-
-      /* ---------------------------------------------
-         PDF headers
-      --------------------------------------------- */
 
       res.setHeader(
         "Content-Type",
@@ -150,16 +165,13 @@ router.get(
         `attachment; filename="SpeedExpress-${trackingNumber}.pdf"`
       );
 
-      /* ---------------------------------------------
-         Generate PDF
-      --------------------------------------------- */
-
       await generateShippingLabel(
         shipment,
         res
       );
 
     } catch (error) {
+
       console.error(
         "=============================================="
       );
@@ -175,6 +187,7 @@ router.get(
       );
 
       if (!res.headersSent) {
+
         return res.status(500).json({
           success: false,
           message:
@@ -182,17 +195,22 @@ router.get(
           error:
             error.message,
         });
+
       }
+
     }
+
   }
 );
 
 /* =====================================================
    GET SINGLE SHIPMENT
-   GET /api/shipments/:trackingNumber
+
+   GET
+   /api/shipments/:trackingNumber
 
    IMPORTANT:
-   Keep this AFTER /:trackingNumber/label
+   This MUST be AFTER /:trackingNumber/label
 ===================================================== */
 
 router.get(
@@ -202,7 +220,9 @@ router.get(
 
 /* =====================================================
    UPDATE SHIPMENT STATUS
-   PATCH /api/shipments/:trackingNumber/status
+
+   PATCH
+   /api/shipments/:trackingNumber/status
 ===================================================== */
 
 router.patch(
@@ -211,7 +231,7 @@ router.patch(
 );
 
 /* =====================================================
-   EXPORT ROUTER
+   EXPORT
 ===================================================== */
 
 module.exports = router;
