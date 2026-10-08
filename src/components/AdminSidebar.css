@@ -1,0 +1,447 @@
+/* ==========================================
+   SPEED EXPRESS ADMIN SIDEBAR
+========================================== */
+
+.admin-sidebar {
+  position: fixed;
+  top: 0;
+  left: 0;
+
+  width: 260px;
+  height: 100vh;
+
+  display: flex;
+  flex-direction: column;
+
+  background: #ffffff;
+
+  border-right: 1px solid #dce6f2;
+
+  box-shadow: 4px 0 18px rgba(11, 61, 145, 0.06);
+
+  z-index: 1000;
+
+  overflow-y: auto;
+}
+
+/* ==========================================
+   BRAND
+========================================== */
+
+.sidebar-brand {
+  height: 82px;
+
+  display: flex;
+  align-items: center;
+
+  padding: 0 22px;
+
+  background: #ffffff;
+
+  border-bottom: 1px solid #e8eef6;
+
+  flex-shrink: 0;
+}
+
+.sidebar-logo {
+  width: 44px;
+  height: 44px;
+
+  display: flex;
+  align-items: center;
+  justify-content: center;
+
+  border-radius: 11px;
+
+  background: #0b3d91;
+
+  color: #ffffff;
+
+  font-size: 15px;
+  font-weight: 800;
+
+  box-shadow: 0 5px 12px rgba(11, 61, 145, 0.18);
+}
+
+.sidebar-brand-text {
+  margin-left: 12px;
+}
+
+.sidebar-brand-text h2 {
+  margin: 0;
+
+  color: #092b5b;
+
+  font-size: 17px;
+  font-weight: 800;
+}
+
+.sidebar-brand-text span {
+  display: block;
+
+  margin-top: 3px;
+
+  color: #7b8ba0;
+
+  font-size: 11px;
+  font-weight: 600;
+
+  letter-spacing: 0.4px;
+}
+
+/* ==========================================
+   NAVIGATION
+========================================== */
+
+.sidebar-navigation {
+  padding: 22px 14px 10px;
+}
+
+.sidebar-menu-title {
+  padding: 0 12px;
+
+  margin-bottom: 9px;
+
+  color: #91a0b3;
+
+  font-size: 10px;
+  font-weight: 800;
+
+  letter-spacing: 1.1px;
+}
+
+/* ==========================================
+   MENU ITEM
+========================================== */
+
+.sidebar-menu-item {
+  height: 46px;
+
+  display: flex;
+  align-items: center;
+
+  padding: 0 13px;
+
+  margin-bottom: 5px;
+
+  border-radius: 9px;
+
+  color: #52657d;
+
+  text-decoration: none;
+
+  font-size: 13.5px;
+  font-weight: 600;
+
+  transition: all 0.2s ease;
+}
+
+.sidebar-menu-item:hover {
+  background: #eef5ff;
+
+  color: #0b3d91;
+
+  transform: translateX(2px);
+}
+
+/* ==========================================
+   ACTIVE ITEM
+========================================== */
+
+.sidebar-menu-item.active {
+  background: #e7f0ff;
+
+  color: #0b3d91;
+
+  font-weight: 700;
+
+  box-shadow: inset 3px 0 0 #0b3d91;
+}
+
+/* ==========================================
+   ICON
+========================================== */
+
+.sidebar-menu-icon {
+  width: 32px;
+  height: 32px;
+
+  min-width: 32px;
+
+  display: flex;
+  align-items: center;
+  justify-content: center;
+
+  margin-right: 10px;
+
+  border-radius: 8px;
+
+  background: #f1f5fa;
+
+  color: #60738b;
+
+  font-size: 16px;
+
+  transition: all 0.2s ease;
+}
+
+.sidebar-menu-item:hover .sidebar-menu-icon {
+  background: #dceaff;
+
+  color: #0b3d91;
+}
+
+.sidebar-menu-item.active .sidebar-menu-icon {
+  background: #d3e4ff;
+
+  color: #0b3d91;
+}
+
+.sidebar-menu-label {
+  white-space: nowrap;
+}
+
+/* ==========================================
+   BOTTOM SECTION
+========================================== */
+
+.sidebar-bottom {
+  margin-top: auto;
+
+  padding: 12px 14px 16px;
+
+  background: #ffffff;
+
+  border-top: 1px solid #e8eef6;
+}
+
+/* ==========================================
+   PROFILE
+========================================== */
+
+.sidebar-profile {
+  display: flex;
+  align-items: center;
+
+  padding: 11px 9px;
+
+  margin-top: 9px;
+
+  border-radius: 10px;
+
+  background: #f5f8fc;
+
+  border: 1px solid #e4ebf4;
+}
+
+.sidebar-profile-avatar {
+  width: 34px;
+  height: 34px;
+
+  min-width: 34px;
+
+  display: flex;
+  align-items: center;
+  justify-content: center;
+
+  border-radius: 50%;
+
+  background: #0b3d91;
+
+  color: #ffffff;
+
+  font-size: 13px;
+  font-weight: 800;
+}
+
+.sidebar-profile-info {
+  margin-left: 9px;
+
+  overflow: hidden;
+}
+
+.sidebar-profile-info strong {
+  display: block;
+
+  color: #092b5b;
+
+  font-size: 12px;
+
+  white-space: nowrap;
+
+  overflow: hidden;
+
+  text-overflow: ellipsis;
+}
+
+.sidebar-profile-info span {
+  display: block;
+
+  margin-top: 2px;
+
+  color: #8796a9;
+
+  font-size: 10px;
+}
+
+/* ==========================================
+   LOGOUT
+========================================== */
+
+.sidebar-logout {
+  width: 100%;
+  height: 42px;
+
+  display: flex;
+  align-items: center;
+
+  padding: 0 10px;
+
+  margin-top: 7px;
+
+  border: none;
+
+  border-radius: 9px;
+
+  background: transparent;
+
+  color: #68788d;
+
+  font-family: inherit;
+
+  font-size: 13px;
+
+  font-weight: 600;
+
+  cursor: pointer;
+
+  transition: all 0.2s ease;
+}
+
+.sidebar-logout:hover {
+  background: #fff1f1;
+
+  color: #d32f2f;
+}
+
+.sidebar-logout .sidebar-menu-icon {
+  margin-right: 10px;
+}
+
+/* ==========================================
+   SCROLLBAR
+========================================== */
+
+.admin-sidebar::-webkit-scrollbar {
+  width: 5px;
+}
+
+.admin-sidebar::-webkit-scrollbar-track {
+  background: #ffffff;
+}
+
+.admin-sidebar::-webkit-scrollbar-thumb {
+  background: #d6e0ec;
+
+  border-radius: 10px;
+}
+
+/* ==========================================
+   MAIN CONTENT
+========================================== */
+
+.admin-main-content {
+  margin-left: 260px;
+
+  min-height: 100vh;
+
+  background: #f5f8fc;
+}
+
+/* ==========================================
+   TABLET
+========================================== */
+
+@media (max-width: 900px) {
+  .admin-sidebar {
+    width: 220px;
+  }
+
+  .admin-main-content {
+    margin-left: 220px;
+  }
+}
+
+/* ==========================================
+   MOBILE
+========================================== */
+
+@media (max-width: 700px) {
+  .admin-sidebar {
+    width: 72px;
+  }
+
+  .sidebar-brand {
+    justify-content: center;
+
+    padding: 0;
+  }
+
+  .sidebar-brand-text {
+    display: none;
+  }
+
+  .sidebar-navigation {
+    padding-left: 10px;
+    padding-right: 10px;
+  }
+
+  .sidebar-bottom {
+    padding-left: 10px;
+    padding-right: 10px;
+  }
+
+  .sidebar-menu-title {
+    display: none;
+  }
+
+  .sidebar-menu-item {
+    width: 52px;
+
+    justify-content: center;
+
+    padding: 0;
+  }
+
+  .sidebar-menu-icon {
+    margin-right: 0;
+  }
+
+  .sidebar-menu-label {
+    display: none;
+  }
+
+  .sidebar-profile {
+    justify-content: center;
+
+    padding: 8px 0;
+  }
+
+  .sidebar-profile-info {
+    display: none;
+  }
+
+  .sidebar-logout {
+    justify-content: center;
+
+    padding: 0;
+  }
+
+  .sidebar-logout span:last-child {
+    display: none;
+  }
+
+  .admin-main-content {
+    margin-left: 72px;
+  }
+}
