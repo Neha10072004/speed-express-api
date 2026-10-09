@@ -1,196 +1,147 @@
+
 const mongoose = require("mongoose");
+
+const ALLOWED_STATUSES = [
+  "In Transit",
+  "Out For Delivery",
+  "Delivered",
+];
 
 const statusHistorySchema = new mongoose.Schema(
   {
     status: {
       type: String,
-      enum: [
-        "In Transit",
-        "Out For Delivery",
-        "Delivered"
-      ],
-      required: true
+      enum: ALLOWED_STATUSES,
+      required: true,
     },
-
     location: {
       type: String,
-      required: true
+      required: true,
+      trim: true,
     },
-
     date: {
       type: String,
-      required: true
+      required: true,
     },
-
     time: {
       type: String,
-      required: true
+      required: true,
     },
-
     remarks: {
       type: String,
-      default: ""
-    }
+      default: "",
+      trim: true,
+    },
   },
-  {
-    _id: false
-  }
+  { _id: false }
 );
 
 const shipmentSchema = new mongoose.Schema(
   {
-    /*
-     * ONLINE / OFFLINE
-     */
     bookingType: {
       type: String,
       enum: ["Online", "Offline"],
+      default: "Offline",
       required: true,
-      default: "Offline"
     },
 
-    /*
-     * TRACKING NUMBER
-     */
     trackingNumber: {
       type: String,
       required: true,
       unique: true,
       index: true,
       trim: true,
-      uppercase: true
+      uppercase: true,
     },
 
-    /*
-     * AWD NUMBER
-     */
     awdNumber: {
       type: String,
       required: true,
       unique: true,
       index: true,
       trim: true,
-      uppercase: true
+      uppercase: true,
     },
 
-    /*
-     * SENDER
-     */
     senderName: {
       type: String,
       required: true,
-      trim: true
+      trim: true,
     },
-
     senderPhone: {
       type: String,
       required: true,
-      trim: true
+      trim: true,
     },
-
     senderAddress: {
       type: String,
       required: true,
-      trim: true
+      trim: true,
     },
 
-    /*
-     * RECEIVER
-     */
     receiverName: {
       type: String,
       required: true,
-      trim: true
+      trim: true,
     },
-
     receiverPhone: {
       type: String,
       required: true,
-      trim: true
+      trim: true,
     },
-
     receiverAddress: {
       type: String,
       required: true,
-      trim: true
+      trim: true,
     },
 
-    /*
-     * PACKAGE
-     */
     packageType: {
       type: String,
       required: true,
-      trim: true
+      trim: true,
     },
 
     weight: {
       type: Number,
       required: true,
-      min: 0
+      min: 0.01,
     },
 
-    /*
-     * CURRENT STATUS
-     */
     currentStatus: {
       type: String,
-      enum: [
-        "In Transit",
-        "Out For Delivery",
-        "Delivered"
-      ],
+      enum: ALLOWED_STATUSES,
       default: "In Transit",
-      required: true
+      required: true,
     },
 
-    /*
-     * CURRENT LOCATION
-     */
     currentLocation: {
       type: String,
       required: true,
-      trim: true
+      trim: true,
     },
 
-    /*
-     * CURRENT DATE
-     */
     currentDate: {
       type: String,
-      required: true
+      required: true,
     },
 
-    /*
-     * CURRENT TIME
-     */
     currentTime: {
       type: String,
-      required: true
+      required: true,
     },
 
-    /*
-     * CURRENT REMARKS
-     */
     currentRemarks: {
       type: String,
-      default: ""
+      default: "",
+      trim: true,
     },
 
-    /*
-     * TRACKING HISTORY
-     */
     statusHistory: {
       type: [statusHistorySchema],
-      default: []
-    }
+      default: [],
+    },
   },
-  {
-    timestamps: true
-  }
+  { timestamps: true }
 );
 
-module.exports = mongoose.model(
-  "Shipment",
-  shipmentSchema
-);
+module.exports = mongoose.model("Shipment", shipmentSchema);

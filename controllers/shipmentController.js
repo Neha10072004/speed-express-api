@@ -1,536 +1,313 @@
+
 const Shipment = require("../models/Shipment");
 
-/* =========================
-   GENERATE TRACKING NUMBER
-========================= */
+const ALLOWED_STATUSES = [
+  "In Transit",
+  "Out For Delivery",
+  "Delivered",
+];
 
-const generateTrackingNumber = () => {
-  const randomNumber = Math.floor(
-    100000 + Math.random() * 900000
-  );
+const generateTrackingNumber = () =>
+  `SPEED${Math.floor(100000 + Math.random() * 900000)}`;
 
-  return `SPEED${randomNumber}`;
-};
+const generateAWDNumber = () =>
+  `AWD${Math.floor(100000 + Math.random() * 900000)}`;
 
-/* =========================
-   GENERATE AWD NUMBER
-========================= */
-
-const generateAWDNumber = () => {
-  const randomNumber = Math.floor(
-    100000 + Math.random() * 900000
-  );
-
-  return `AWD${randomNumber}`;
-};
-
-/* =========================
-   CURRENT DATE
-========================= */
-
-const getCurrentDate = () => {
-  return new Date().toLocaleDateString("en-IN");
-};
-
-/* =========================
-   CURRENT TIME
-========================= */
-
-const getCurrentTime = () => {
-  return new Date().toLocaleTimeString("en-IN", {
-    hour: "2-digit",
-    minute: "2-digit"
+const getCurrentDate = () =>
+  new Date().toLocaleDateString("en-IN", {
+    timeZone: "Asia/Kolkata",
   });
-};
 
-/* =========================
-   CREATE SHIPMENT
-========================= */
+const getCurrentTime = () =>
+  new Date().toLocaleTimeString("en-IN", {
+    timeZone: "Asia/Kolkata",
+    hour: "2-digit",
+    minute: "2-digit",
+    hour12: true,
+  });
+
+const normalizeNumber = (value) =>
+  String(value || "").trim().toUpperCase();
 
 const createShipment = async (req, res) => {
   try {
     const {
+      bookingType = "Offline",
       senderName,
       senderPhone,
       senderAddress,
-
       receiverName,
       receiverPhone,
       receiverAddress,
-
       packageType,
       weight,
-
       currentLocation,
-      currentRemarks
+      currentRemarks = "",
     } = req.body;
 
-    /* Required fields */
+    const requiredFields = {
+      senderName,
+      senderPhone,
+      senderAddress,
+      receiverName,
+      receiverPhone,
+      receiverAddress,
+      packageType,
+      currentLocation,
+    };
 
-    if (
-      !senderName ||
-      !senderPhone ||
-      !senderAddress ||
-      !receiverName ||
-      !receiverPhone ||
-      !receiverAddress ||
-      !packageType ||
-      !weight ||
-      !currentLocation
-    ) {
+    const missingFields = Object.entries(requiredFields)
+      .filter(([, value]) => !String(value || "").trim())
+      .map(([key]) => key);
+
+    if (missingFields.length) {
       return res.status(400).json({
         success: false,
-        message: "Please fill all required fields."
+        message: "Please fill all required fields.",
+        missingFields,
       });
     }
 
-    /* Validate weight */
+    if (!["Online", "Offline"].includes(bookingType)) {
+      return res.status(400).json({
+        success: false,
+        message: "bookingType must be Online or Offline.",
+      });
+    }
 
     const numericWeight = Number(weight);
 
-    if (
-      !Number.isFinite(numericWeight) ||
-      numericWeight <= 0
-    ) {
+    if (!Number.isFinite(numericWeight) || numericWeight <= 0) {
       return res.status(400).json({
         success: false,
-        message: "Please enter a valid package weight."
+        message: "Weight must be a number greater than zero.",
       });
     }
 
-    /* Generate tracking numbers */
-
-    const trackingNumber =
-      generateTrackingNumber();
-
-    const awdNumber =
-      generateAWDNumber();
-
-    /* Date and time */
-
+    // Retry generated numbers if a duplicate is encountered.
+    let shipment;
     const date = getCurrentDate();
-
     const time = getCurrentTime();
+    const location = String(currentLocation).trim();
+    const remarks = String(currentRemarks || "").trim()
+      || "Shipment booked successfully";
 
-    /* Remarks */
+    for (let attempt = 0; attempt < 5; attempt += 1) {
+      const trackingNumber = generateTrackingNumber();
+      const awdNumber = generateAWDNumber();
 
-    const remarks =
-      currentRemarks ||
-      "Shipment booked successfully";
+      try {
+        shipment = await Shipment.create({
+          bookingType,
+          trackingNumber,
+          awdNumber,
+          senderName: String(senderName).trim(),
+          senderPhone: String(senderPhone).trim(),
+          senderAddress: String(senderAddress).trim(),
+          receiverName: String(receiverName).trim(),
+          receiverPhone: String(receiverPhone).trim(),
+          receiverAddress: String(receiverAddress).trim(),
+          packageType: String(packageType).trim(),
+          weight: numericWeight,
+          currentStatus: "In Transit",
+          currentLocation: location,
+          currentDate: date,
+          currentTime: time,
+          currentRemarks: remarks,
+          statusHistory: [
+            {
+              status: "In Transit",
+              location,
+              date,
+              time,
+              remarks,
+            },
+          ],
+        });
 
-    /* Data for MongoDB */
-
-    const shipmentData = {
-      trackingNumber,
-      awdNumber,
-
-      senderName: senderName.trim(),
-      senderPhone: senderPhone.trim(),
-      senderAddress: senderAddress.trim(),
-
-      receiverName: receiverName.trim(),
-      receiverPhone: receiverPhone.trim(),
-      receiverAddress: receiverAddress.trim(),
-
-      packageType: packageType.trim(),
-      weight: numericWeight,
-
-      currentStatus: "In Transit",
-
-      currentLocation:
-        currentLocation.trim(),
-
-      currentDate: date,
-      currentTime: time,
-
-      currentRemarks: remarks.trim(),
-
-      statusHistory: [
-        {
-          status: "In Transit",
-
-          location:
-            currentLocation.trim(),
-
-          date,
-
-          time,
-
-          remarks: remarks.trim()
+        break;
+      } catch (error) {
+        if (error.code === 11000 && attempt < 4) {
+          continue;
         }
-      ]
-    };
+        throw error;
+      }
+    }
 
-    console.log(
-      "Creating Shipment:",
-      shipmentData
-    );
-
-    /* Save to MongoDB */
-
-    const shipment =
-      await Shipment.create(
-        shipmentData
-      );
-
-    console.log(
-      "Shipment Created:",
-      shipment.trackingNumber
-    );
+    if (!shipment) {
+      return res.status(500).json({
+        success: false,
+        message: "Could not generate unique shipment numbers.",
+      });
+    }
 
     return res.status(201).json({
       success: true,
-
-      message:
-        "Shipment created successfully.",
-
-      shipment
+      message: "Shipment created successfully.",
+      shipment,
     });
-
   } catch (error) {
-
-    console.error(
-      "================================="
-    );
-
-    console.error(
-      "CREATE SHIPMENT ERROR"
-    );
-
-    console.error(
-      "Message:",
-      error.message
-    );
-
-    console.error(
-      "Name:",
-      error.name
-    );
-
-    console.error(
-      "Stack:",
-      error.stack
-    );
-
-    console.error(
-      "================================="
-    );
-
-    /* Duplicate tracking/AWD */
+    console.error("CREATE SHIPMENT ERROR:", error);
 
     if (error.code === 11000) {
       return res.status(409).json({
         success: false,
-        message:
-          "Tracking number or AWD number already exists. Please try again."
+        message: "A duplicate tracking or AWD number was generated. Please retry.",
       });
     }
-
-    /* Validation error */
 
     if (error.name === "ValidationError") {
       return res.status(400).json({
         success: false,
-        message:
-          "Shipment validation failed.",
-        error: error.message
+        message: "Shipment validation failed.",
+        error: error.message,
       });
     }
 
     return res.status(500).json({
       success: false,
-      message:
-        "Server error while creating shipment.",
-      error: error.message
+      message: "Server error while creating shipment.",
     });
   }
 };
 
-/* =========================
-   GET ALL SHIPMENTS
-========================= */
-
-const getAllShipments = async (
-  req,
-  res
-) => {
+const getAllShipments = async (req, res) => {
   try {
-
-    const shipments =
-      await Shipment.find()
-        .sort({
-          createdAt: -1
-        });
+    const shipments = await Shipment.find()
+      .sort({ createdAt: -1 })
+      .lean();
 
     return res.json({
       success: true,
-
-      count:
-        shipments.length,
-
-      shipments
+      count: shipments.length,
+      shipments,
     });
-
   } catch (error) {
-
-    console.error(
-      "GET SHIPMENTS ERROR:",
-      error
-    );
+    console.error("GET SHIPMENTS ERROR:", error.message);
 
     return res.status(500).json({
       success: false,
-
-      message:
-        "Server error while fetching shipments."
+      message: "Server error while fetching shipments.",
     });
   }
 };
 
-/* =========================
-   GET ONE SHIPMENT
-   TRACKING OR AWD
-========================= */
-
-const getShipment = async (
-  req,
-  res
-) => {
+const getShipment = async (req, res) => {
   try {
-
-    const number =
-      String(
-        req.params.trackingNumber || ""
-      )
-        .trim()
-        .toUpperCase();
+    const number = normalizeNumber(req.params.trackingNumber);
 
     if (!number) {
       return res.status(400).json({
         success: false,
-        message:
-          "Tracking Number or AWD Number is required."
+        message: "Tracking Number or AWD Number is required.",
       });
     }
 
-    const shipment =
-      await Shipment.findOne({
-        $or: [
-          {
-            trackingNumber:
-              number
-          },
-          {
-            awdNumber:
-              number
-          }
-        ]
-      });
+    const shipment = await Shipment.findOne({
+      $or: [
+        { trackingNumber: number },
+        { awdNumber: number },
+      ],
+    });
 
     if (!shipment) {
       return res.status(404).json({
         success: false,
-
-        message:
-          "Shipment not found."
+        message: "Shipment not found.",
       });
     }
 
-    return res.json({
-      success: true,
-
-      shipment
-    });
-
+    return res.json({ success: true, shipment });
   } catch (error) {
-
-    console.error(
-      "GET SHIPMENT ERROR:",
-      error
-    );
+    console.error("GET SHIPMENT ERROR:", error.message);
 
     return res.status(500).json({
       success: false,
-
-      message:
-        "Server error while tracking shipment.",
-
-      error: error.message
+      message: "Server error while tracking shipment.",
     });
   }
 };
 
-/* =========================
-   UPDATE SHIPMENT STATUS
-========================= */
+const updateShipmentStatus = async (req, res) => {
+  try {
+    const number = normalizeNumber(req.params.trackingNumber);
 
-const updateShipmentStatus =
-  async (req, res) => {
-
-    try {
-
-      const number =
-        String(
-          req.params.trackingNumber || ""
-        )
-          .trim()
-          .toUpperCase();
-
-      if (!number) {
-        return res.status(400).json({
-          success: false,
-
-          message:
-            "Tracking Number or AWD Number is required."
-        });
-      }
-
-      const {
-        status,
-        location,
-        date,
-        time,
-        remarks
-      } = req.body;
-
-      /* Only these 3 statuses */
-
-      const allowedStatuses = [
-        "In Transit",
-        "Out For Delivery",
-        "Delivered"
-      ];
-
-      if (
-        !allowedStatuses.includes(
-          status
-        )
-      ) {
-        return res.status(400).json({
-          success: false,
-
-          message:
-            "Invalid status. Allowed statuses are: In Transit, Out For Delivery, Delivered."
-        });
-      }
-
-      /* Find shipment */
-
-      const shipment =
-        await Shipment.findOne({
-          $or: [
-            {
-              trackingNumber:
-                number
-            },
-            {
-              awdNumber:
-                number
-            }
-          ]
-        });
-
-      if (!shipment) {
-        return res.status(404).json({
-          success: false,
-
-          message:
-            "Shipment not found."
-        });
-      }
-
-      /* Update information */
-
-      const updateDate =
-        date ||
-        getCurrentDate();
-
-      const updateTime =
-        time ||
-        getCurrentTime();
-
-      const updateLocation =
-        location ||
-        shipment.currentLocation ||
-        "N/A";
-
-      const updateRemarks =
-        remarks || "";
-
-      /* Current status */
-
-      shipment.currentStatus =
-        status;
-
-      shipment.currentLocation =
-        updateLocation;
-
-      shipment.currentDate =
-        updateDate;
-
-      shipment.currentTime =
-        updateTime;
-
-      shipment.currentRemarks =
-        updateRemarks;
-
-      /* Add history */
-
-      shipment.statusHistory.push({
-        status,
-
-        location:
-          updateLocation,
-
-        date:
-          updateDate,
-
-        time:
-          updateTime,
-
-        remarks:
-          updateRemarks
-      });
-
-      /* Save */
-
-      await shipment.save();
-
-      return res.json({
-        success: true,
-
-        message:
-          "Shipment status updated successfully.",
-
-        shipment
-      });
-
-    } catch (error) {
-
-      console.error(
-        "UPDATE STATUS ERROR:",
-        error
-      );
-
-      return res.status(500).json({
+    if (!number) {
+      return res.status(400).json({
         success: false,
-
-        message:
-          "Server error while updating status.",
-
-        error:
-          error.message
+        message: "Tracking Number or AWD Number is required.",
       });
     }
-  };
 
-/* =========================
-   EXPORT
-========================= */
+    const { status, location, date, time, remarks = "" } = req.body;
+
+    if (!ALLOWED_STATUSES.includes(status)) {
+      return res.status(400).json({
+        success: false,
+        message: "Status must be In Transit, Out For Delivery, or Delivered.",
+      });
+    }
+
+    if (!String(location || "").trim()) {
+      return res.status(400).json({
+        success: false,
+        message: "Location is required when updating shipment status.",
+      });
+    }
+
+    const shipment = await Shipment.findOne({
+      $or: [
+        { trackingNumber: number },
+        { awdNumber: number },
+      ],
+    });
+
+    if (!shipment) {
+      return res.status(404).json({
+        success: false,
+        message: "Shipment not found.",
+      });
+    }
+
+    const updateDate = String(date || getCurrentDate()).trim();
+    const updateTime = String(time || getCurrentTime()).trim();
+    const updateLocation = String(location).trim();
+    const updateRemarks = String(remarks || "").trim();
+
+    shipment.currentStatus = status;
+    shipment.currentLocation = updateLocation;
+    shipment.currentDate = updateDate;
+    shipment.currentTime = updateTime;
+    shipment.currentRemarks = updateRemarks;
+
+    shipment.statusHistory.push({
+      status,
+      location: updateLocation,
+      date: updateDate,
+      time: updateTime,
+      remarks: updateRemarks,
+    });
+
+    await shipment.save();
+
+    return res.json({
+      success: true,
+      message: "Shipment status updated successfully.",
+      shipment,
+    });
+  } catch (error) {
+    console.error("UPDATE STATUS ERROR:", error.message);
+
+    return res.status(500).json({
+      success: false,
+      message: "Server error while updating shipment status.",
+    });
+  }
+};
 
 module.exports = {
   createShipment,
   getAllShipments,
   getShipment,
-  updateShipmentStatus
+  updateShipmentStatus,
 };
