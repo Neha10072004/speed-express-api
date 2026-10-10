@@ -1,43 +1,56 @@
+
 import React from "react";
 import {
   Navigate,
   Outlet,
+  useLocation,
 } from "react-router-dom";
 
 import AdminSidebar from "../components/AdminSidebar";
 
 export default function AdminDashboard() {
-  const adminData = localStorage.getItem(
+  const location = useLocation();
+
+  // Read admin details from browser storage
+  const localAdminData = localStorage.getItem(
+    "speedExpressAdmin"
+  );
+
+  const sessionAdminData = sessionStorage.getItem(
     "speedExpressAdmin"
   );
 
   let admin = null;
 
   try {
-    admin = adminData
-      ? JSON.parse(adminData)
-      : null;
+    const adminData = localAdminData || sessionAdminData;
+
+    admin = adminData ? JSON.parse(adminData) : null;
   } catch (error) {
+    console.error("Unable to read admin details:", error);
     admin = null;
   }
 
-  // ========================================
-  // ADMIN LOGIN CHECK
-  // ========================================
+  // Check whether the current browser session is authenticated
+  const isLoggedIn =
+    sessionStorage.getItem("speedExpressDemoLogin") === "true";
 
+  // Check admin role and login status
   if (
     !admin ||
-    admin.loggedIn !== true ||
-    admin.role !== "admin"
+    admin.role !== "admin" ||
+    !isLoggedIn
   ) {
     return (
       <Navigate
         to="/login"
+        state={{ from: location }}
         replace
       />
     );
   }
 
+  // Admin dashboard layout
   return (
     <div className="admin-layout">
 
@@ -49,11 +62,8 @@ export default function AdminDashboard() {
 
         {/* Top Bar */}
         <header className="admin-topbar">
-
           <div className="admin-topbar-left">
-            <h1>
-              Speed Express Admin
-            </h1>
+            <h1>Speed Express Admin</h1>
 
             <p>
               Manage your courier and delivery operations
@@ -62,36 +72,26 @@ export default function AdminDashboard() {
 
           {/* Admin User */}
           <div className="admin-topbar-user">
-
             <div className="admin-topbar-avatar">
-              A
+              {(admin.email || "A")
+                .charAt(0)
+                .toUpperCase()}
             </div>
 
             <div className="admin-topbar-user-info">
+              <strong>Administrator</strong>
 
-              <strong>
-                Administrator
-              </strong>
-
-              <span>
-                {admin.email}
-              </span>
-
+              <span>{admin.email}</span>
             </div>
-
           </div>
-
         </header>
 
-        {/* Admin Page Content */}
+        {/* Nested Admin Pages */}
         <section className="admin-page-content">
-
           <Outlet />
-
         </section>
 
       </main>
-
     </div>
   );
 }

@@ -253,7 +253,7 @@ export default function Contact() {
               </span>
 
               <h3>
-                Pune & Mumbai
+                Pan India
               </h3>
 
               <span className="contact-card-link">
@@ -391,7 +391,7 @@ export default function Contact() {
                   </h3>
 
                   <p>
-                    Serving Pune, Mumbai & more
+                    Serving Pan India
                   </p>
 
                 </div>

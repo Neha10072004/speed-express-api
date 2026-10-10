@@ -1,496 +1,472 @@
+
 const PDFDocument = require("pdfkit");
 const bwipjs = require("bwip-js");
 const path = require("path");
 const fs = require("fs");
 
 const generateShippingLabel = async (shipment, res) => {
-  return new Promise(async (resolve, reject) => {
-    try {
-      const doc = new PDFDocument({
-        size: "A4",
-        margin: 25,
-        bufferPages: true,
-      });
+  try {
+    const doc = new PDFDocument({
+      size: "A4",
+      margins: {
+        top: 28,
+        bottom: 28,
+        left: 32,
+        right: 32,
+      },
+      autoFirstPage: true,
+      bufferPages: false,
+      compress: true,
+    });
 
-      doc.pipe(res);
+    const trackingNumber = String(
+      shipment.trackingNumber || "NOT-AVAILABLE"
+    );
 
-      const PAGE_WIDTH = 595;
-      const LEFT = 25;
-      const RIGHT = 25;
-      const WIDTH = PAGE_WIDTH - LEFT - RIGHT;
+    const awdNumber = String(
+      shipment.awdNumber || trackingNumber
+    );
 
-      // ==========================================
-      // LOGO
-      // ==========================================
+    const safeTracking = trackingNumber.replace(
+      /[^a-zA-Z0-9_-]/g,
+      "_"
+    );
 
-      const logoPath = path.join(
-        __dirname,
-        "..",
-        "assets",
-        "speed-express-logo.png"
-      );
+    res.setHeader("Content-Type", "application/pdf");
+    res.setHeader(
+      "Content-Disposition",
+      `attachment; filename="ShippingLabel-${safeTracking}.pdf"`
+    );
 
-      // ==========================================
-      // DATA
-      // ==========================================
+    doc.pipe(res);
 
-      const trackingNumber =
-        shipment.trackingNumber || "N/A";
+    const pageWidth = doc.page.width;
+    const left = 32;
+    const right = pageWidth - 32;
+    const width = right - left;
 
-      const awdNumber =
-        shipment.awdNumber || "N/A";
+    const blue = "#0B3D91";
+    const lightBlue = "#EAF2FC";
+    const borderColor = "#B8C7D9";
+    const textColor = "#202B3C";
+    const muted = "#536477";
 
-      const bookingType =
-        shipment.bookingType || "Offline";
-
-      const packageType =
-        shipment.packageType || "Parcel";
-
-      const weight =
-        shipment.weight !== undefined
-          ? `${shipment.weight} KG`
-          : "N/A";
-
-      const status =
-        shipment.currentStatus || "Booked";
-
-      const location =
-        shipment.currentLocation || "N/A";
-
-      const date =
-        shipment.currentDate || "N/A";
-
-      const time =
-        shipment.currentTime || "N/A";
-
-      const remarks =
-        shipment.currentRemarks ||
-        "Handle with care.";
-
-      // ==========================================
-      // COMPACT TABLE HELPERS
-      // ==========================================
-
-      const sectionTitle = (title) => {
-        const y = doc.y;
-
-        doc
-          .rect(LEFT, y, WIDTH, 18)
-          .fill("#0b3d91");
-
-        doc
-          .fillColor("#ffffff")
-          .font("Helvetica-Bold")
-          .fontSize(9)
-          .text(title, LEFT + 7, y + 5);
-
-        doc.fillColor("#000000");
-
-        doc.y = y + 18;
-      };
-
-      const row = (
-        label,
-        value,
-        options = {}
-      ) => {
-        const labelWidth =
-          options.labelWidth || 125;
-
-        const valueWidth =
-          WIDTH - labelWidth;
-
-        const fontSize =
-          options.fontSize || 8;
-
-        const padding = 5;
-
-        const textValue =
-          value !== undefined &&
-          value !== null &&
-          String(value).trim() !== ""
-            ? String(value)
-            : "N/A";
-
-        const valueHeight =
-          doc.heightOfString(
-            textValue,
-            {
-              width:
-                valueWidth - 10,
-            }
-          );
-
-        const rowHeight = Math.max(
-          19,
-          valueHeight + 8
-        );
-
-        const y = doc.y;
-
-        doc
-          .rect(
-            LEFT,
-            y,
-            labelWidth,
-            rowHeight
-          )
-          .stroke("#c8c8c8");
-
-        doc
-          .rect(
-            LEFT + labelWidth,
-            y,
-            valueWidth,
-            rowHeight
-          )
-          .stroke("#c8c8c8");
-
-        doc
-          .fillColor("#222222")
-          .font("Helvetica-Bold")
-          .fontSize(fontSize)
-          .text(
-            label,
-            LEFT + padding,
-            y + 6,
-            {
-              width:
-                labelWidth - 10,
-            }
-          );
-
-        doc
-          .font("Helvetica")
-          .fontSize(fontSize)
-          .text(
-            textValue,
-            LEFT + labelWidth + padding,
-            y + 6,
-            {
-              width:
-                valueWidth - 10,
-            }
-          );
-
-        doc.y = y + rowHeight;
-      };
-
-      // ==========================================
-      // HEADER
-      // ==========================================
-
-      const headerTop = 25;
-
-      if (fs.existsSync(logoPath)) {
-        doc.image(logoPath, {
-          fit: [110, 45],
-          x: LEFT,
-          y: headerTop,
-        });
+    const val = (value, fallback = "-") => {
+      if (
+        value === undefined ||
+        value === null ||
+        String(value).trim() === ""
+      ) {
+        return fallback;
       }
 
+      return String(value);
+    };
+
+    const drawText = (
+      value,
+      x,
+      y,
+      w,
+      options = {}
+    ) => {
       doc
-        .font("Helvetica-Bold")
-        .fontSize(18)
-        .text(
-          "SPEED EXPRESS",
-          LEFT + 115,
-          headerTop + 5,
-          {
-            width: WIDTH - 115,
-            align: "center",
-          }
-        );
+        .font(options.bold ? "Helvetica-Bold" : "Helvetica")
+        .fontSize(options.size || 9)
+        .fillColor(options.color || textColor)
+        .text(String(value), x, y, {
+          width: w,
+          height: options.height || 28,
+          ellipsis: true,
+          lineBreak: false,
+        });
+    };
+
+    const drawLine = (x1, y1, x2, y2) => {
+      doc
+        .strokeColor(borderColor)
+        .lineWidth(0.7)
+        .moveTo(x1, y1)
+        .lineTo(x2, y2)
+        .stroke();
+    };
+
+    const drawSectionTitle = (title, x, y, w) => {
+      doc
+        .rect(x, y, w, 21)
+        .fill(lightBlue);
+
+      drawText(title, x + 7, y + 6, w - 14, {
+        bold: true,
+        size: 9,
+        color: blue,
+      });
 
       doc
-        .font("Helvetica")
-        .fontSize(8.5)
-        .text(
-          "Fast • Safe • Reliable Delivery",
-          LEFT + 115,
-          headerTop + 28,
-          {
-            width: WIDTH - 115,
-            align: "center",
-          }
-        );
+        .rect(x, y, w, 21)
+        .strokeColor(borderColor)
+        .lineWidth(0.7)
+        .stroke();
+    };
 
+    const drawField = (
+      label,
+      value,
+      x,
+      y,
+      w,
+      h = 32
+    ) => {
       doc
-        .moveTo(LEFT, 78)
-        .lineTo(
-          PAGE_WIDTH - RIGHT,
-          78
-        )
-        .lineWidth(1)
-        .stroke("#0b3d91");
+        .rect(x, y, w, h)
+        .strokeColor(borderColor)
+        .lineWidth(0.6)
+        .stroke();
 
-      // ==========================================
-      // SHIPPING LABEL
-      // ==========================================
+      drawText(label.toUpperCase(), x + 6, y + 5, w - 12, {
+        bold: true,
+        size: 7,
+        color: muted,
+      });
 
-      doc
-        .font("Helvetica-Bold")
-        .fontSize(14)
-        .text(
-          "SHIPPING LABEL",
-          LEFT,
-          86,
-          {
-            width: WIDTH,
-            align: "center",
-          }
-        );
+      drawText(val(value), x + 6, y + 17, w - 12, {
+        bold: true,
+        size: 9,
+        height: h - 18,
+      });
+    };
 
-      doc.y = 108;
+    // --------------------------------------------------
+    // HEADER
+    // --------------------------------------------------
 
-      // ==========================================
-      // AWD + TRACKING
-      // ==========================================
+    doc
+      .rect(left, 25, width, 58)
+      .fill(blue);
 
-      row(
-        "AWD NUMBER",
-        awdNumber
-      );
+    const logoPath = path.join(
+      __dirname,
+      "..",
+      "assets",
+      "speed-express-logo.png"
+    );
 
-      row(
-        "TRACKING NUMBER",
-        trackingNumber
-      );
+    let titleX = left + 12;
 
-      doc.y += 4;
-
-      // ==========================================
-      // BARCODE
-      // ==========================================
-
+    if (fs.existsSync(logoPath)) {
       try {
-        const barcode =
-          await bwipjs.toBuffer({
-            bcid: "code128",
-            text: String(
-              awdNumber !== "N/A"
-                ? awdNumber
-                : trackingNumber
-            ),
-            scale: 1.5,
-            height: 10,
-            includetext: true,
-            textxalign: "center",
-          });
-
-        doc.image(barcode, {
-          fit: [300, 48],
-          align: "center",
+        doc.image(logoPath, left + 10, 34, {
+          fit: [75, 40],
         });
 
-        doc.y += 3;
-      } catch (error) {
-        console.error(
-          "Barcode error:",
-          error
-        );
+        titleX = left + 95;
+      } catch (err) {
+        console.error("Could not load Speed Express logo:", err.message);
       }
-
-      // ==========================================
-      // PACKAGE DETAILS
-      // ==========================================
-
-      sectionTitle("PACKAGE DETAILS");
-
-      row(
-        "BOOKING TYPE",
-        bookingType
-      );
-
-      row(
-        "PACKAGE TYPE",
-        packageType
-      );
-
-      row(
-        "WEIGHT",
-        weight
-      );
-
-      doc.y += 4;
-
-      // ==========================================
-      // FROM / SENDER
-      // ==========================================
-
-      sectionTitle("FROM / SENDER");
-
-      row(
-        "NAME",
-        shipment.senderName
-      );
-
-      row(
-        "MOBILE",
-        shipment.senderPhone
-      );
-
-      row(
-        "ADDRESS",
-        shipment.senderAddress,
-        {
-          fontSize: 7.5,
-        }
-      );
-
-      doc.y += 4;
-
-      // ==========================================
-      // TO / RECEIVER
-      // ==========================================
-
-      sectionTitle("TO / RECEIVER");
-
-      row(
-        "NAME",
-        shipment.receiverName
-      );
-
-      row(
-        "MOBILE",
-        shipment.receiverPhone
-      );
-
-      row(
-        "ADDRESS",
-        shipment.receiverAddress,
-        {
-          fontSize: 7.5,
-        }
-      );
-
-      doc.y += 4;
-
-      // ==========================================
-      // SHIPMENT STATUS
-      // ==========================================
-
-      sectionTitle("SHIPMENT STATUS");
-
-      row(
-        "STATUS",
-        status
-      );
-
-      row(
-        "LOCATION",
-        location
-      );
-
-      row(
-        "DATE",
-        date
-      );
-
-      row(
-        "TIME",
-        time
-      );
-
-      doc.y += 4;
-
-      // ==========================================
-      // REMARKS
-      // ==========================================
-
-      sectionTitle("REMARKS");
-
-      row(
-        "REMARKS",
-        remarks,
-        {
-          fontSize: 7.5,
-        }
-      );
-
-      doc.y += 7;
-
-      // ==========================================
-      // FOOTER
-      // ==========================================
-
-      doc
-        .moveTo(LEFT, doc.y)
-        .lineTo(
-          PAGE_WIDTH - RIGHT,
-          doc.y
-        )
-        .lineWidth(0.8)
-        .stroke("#0b3d91");
-
-      doc.y += 5;
-
-      doc
-        .font("Helvetica-Bold")
-        .fontSize(9)
-        .text(
-          "SPEED EXPRESS",
-          LEFT,
-          doc.y,
-          {
-            width: WIDTH,
-            align: "center",
-          }
-        );
-
-      doc.y += 12;
-
-      doc
-        .font("Helvetica")
-        .fontSize(7)
-        .text(
-          "For shipment tracking, use the AWD / Tracking Number on the Speed Express website.",
-          LEFT,
-          doc.y,
-          {
-            width: WIDTH,
-            align: "center",
-          }
-        );
-
-      doc.y += 10;
-
-      doc
-        .fontSize(7)
-        .text(
-          "Customer Support: speedexp2022@gmail.com",
-          LEFT,
-          doc.y,
-          {
-            width: WIDTH,
-            align: "center",
-          }
-        );
-
-      // ==========================================
-      // FINISH
-      // ==========================================
-
-      doc.on("end", () => {
-        resolve();
-      });
-
-      doc.on("error", (error) => {
-        reject(error);
-      });
-
-      doc.end();
-    } catch (error) {
-      console.error(
-        "Shipping label generation error:",
-        error
-      );
-
-      reject(error);
     }
-  });
+
+    doc
+      .font("Helvetica-Bold")
+      .fontSize(18)
+      .fillColor("#FFFFFF")
+      .text("SPEED EXPRESS", titleX, 35, {
+        width: right - titleX - 10,
+        lineBreak: false,
+      });
+
+    doc
+      .font("Helvetica")
+      .fontSize(8)
+      .fillColor("#FFFFFF")
+      .text("Fast • Safe • Reliable Delivery", titleX, 59, {
+        width: right - titleX - 10,
+        lineBreak: false,
+      });
+
+    doc
+      .font("Helvetica-Bold")
+      .fontSize(13)
+      .fillColor(blue)
+      .text("SHIPPING LABEL", left, 94, {
+        width,
+        align: "center",
+      });
+
+    // --------------------------------------------------
+    // AWD BARCODE
+    // --------------------------------------------------
+
+    const barcodeTop = 116;
+    const barcodeHeight = 73;
+
+    doc
+      .rect(left, barcodeTop, width, barcodeHeight)
+      .strokeColor(borderColor)
+      .lineWidth(0.8)
+      .stroke();
+
+    drawText("AWD NUMBER", left + 8, barcodeTop + 7, width - 16, {
+      bold: true,
+      size: 8,
+      color: blue,
+    });
+
+    drawText(awdNumber, left + 8, barcodeTop + 22, width - 16, {
+      bold: true,
+      size: 11,
+    });
+
+    try {
+      const barcodeBuffer = await bwipjs.toBuffer({
+        bcid: "code128",
+        text: awdNumber,
+        scale: 2,
+        height: 12,
+        includetext: true,
+        textxalign: "center",
+        textsize: 9,
+        backgroundcolor: "FFFFFF",
+        barcolor: "000000",
+      });
+
+      doc.image(barcodeBuffer, left + 220, barcodeTop + 7, {
+        fit: [width - 235, 59],
+        align: "center",
+        valign: "center",
+      });
+    } catch (err) {
+      console.error("Barcode generation failed:", err);
+
+      drawText(
+        "Barcode unavailable",
+        left + 220,
+        barcodeTop + 32,
+        width - 235,
+        { color: "#B00020", bold: true }
+      );
+    }
+
+    // --------------------------------------------------
+    // SHIPMENT INFORMATION
+    // --------------------------------------------------
+
+    let y = 199;
+
+    drawField(
+      "Tracking Number",
+      trackingNumber,
+      left,
+      y,
+      width,
+      34
+    );
+
+    y += 39;
+
+    const gap = 8;
+    const col = (width - gap * 2) / 3;
+
+    drawField(
+      "Booking Type",
+      shipment.bookingType,
+      left,
+      y,
+      col,
+      36
+    );
+
+    drawField(
+      "Package Type",
+      shipment.packageType,
+      left + col + gap,
+      y,
+      col,
+      36
+    );
+
+    drawField(
+      "Weight (KG)",
+      shipment.weight,
+      left + (col + gap) * 2,
+      y,
+      col,
+      36
+    );
+
+    // --------------------------------------------------
+    // SENDER AND RECEIVER TABLES
+    // --------------------------------------------------
+
+    y += 47;
+
+    const half = (width - 10) / 2;
+
+    drawSectionTitle("FROM / SENDER", left, y, half);
+    drawSectionTitle("TO / RECEIVER", left + half + 10, y, half);
+
+    y += 21;
+
+    const senderX = left;
+    const receiverX = left + half + 10;
+
+    const tableRows = [
+      ["Name", shipment.senderName, shipment.receiverName],
+      ["Phone", shipment.senderPhone, shipment.receiverPhone],
+      ["Address", shipment.senderAddress, shipment.receiverAddress],
+    ];
+
+    const rowHeights = [30, 30, 49];
+
+    tableRows.forEach((row, index) => {
+      const h = rowHeights[index];
+
+      [senderX, receiverX].forEach((x) => {
+        doc
+          .rect(x, y, half, h)
+          .strokeColor(borderColor)
+          .lineWidth(0.6)
+          .stroke();
+      });
+
+      drawText(row[0].toUpperCase(), senderX + 6, y + 4, half - 12, {
+        bold: true,
+        size: 7,
+        color: muted,
+      });
+
+      drawText(row[1], senderX + 6, y + 15, half - 12, {
+        size: 8,
+        height: h - 16,
+      });
+
+      drawText(row[0].toUpperCase(), receiverX + 6, y + 4, half - 12, {
+        bold: true,
+        size: 7,
+        color: muted,
+      });
+
+      drawText(row[2], receiverX + 6, y + 15, half - 12, {
+        size: 8,
+        height: h - 16,
+      });
+
+      y += h;
+    });
+
+    // --------------------------------------------------
+    // CURRENT STATUS TABLE
+    // --------------------------------------------------
+
+    y += 12;
+
+    drawSectionTitle("SHIPMENT STATUS", left, y, width);
+    y += 21;
+
+    const statusCol = width / 4;
+
+    drawField(
+      "Status",
+      shipment.currentStatus,
+      left,
+      y,
+      statusCol,
+      34
+    );
+
+    drawField(
+      "Location",
+      shipment.currentLocation,
+      left + statusCol,
+      y,
+      statusCol,
+      34
+    );
+
+    drawField(
+      "Date",
+      shipment.currentDate,
+      left + statusCol * 2,
+      y,
+      statusCol,
+      34
+    );
+
+    drawField(
+      "Time",
+      shipment.currentTime,
+      left + statusCol * 3,
+      y,
+      statusCol,
+      34
+    );
+
+    y += 34;
+
+    // --------------------------------------------------
+    // REMARKS
+    // --------------------------------------------------
+
+    const remarksHeight = 42;
+
+    doc
+      .rect(left, y, width, remarksHeight)
+      .strokeColor(borderColor)
+      .lineWidth(0.7)
+      .stroke();
+
+    drawText("REMARKS", left + 7, y + 5, width - 14, {
+      bold: true,
+      size: 7,
+      color: muted,
+    });
+
+    drawText(
+      val(shipment.currentRemarks, "No remarks"),
+      left + 7,
+      y + 18,
+      width - 14,
+      { size: 8, height: 20 }
+    );
+
+    // --------------------------------------------------
+    // FOOTER
+    // --------------------------------------------------
+
+    const footerY = 790;
+
+    drawLine(left, footerY, right, footerY);
+
+    drawText(
+      "SPEED EXPRESS | Fast • Safe • Reliable Delivery",
+      left,
+      footerY + 8,
+      width,
+      { bold: true, size: 8, color: blue }
+    );
+
+    drawText(
+      "Please keep your tracking number for shipment enquiries.",
+      left,
+      footerY + 22,
+      width,
+      { size: 7, color: muted }
+    );
+
+    doc.end();
+  } catch (err) {
+    console.error("Shipping label generation error:", err);
+
+    if (!res.headersSent) {
+      return res.status(500).json({
+        success: false,
+        message: "Failed to generate shipping label",
+      });
+    }
+
+    if (!res.writableEnded) {
+      res.end();
+    }
+  }
 };
 
-module.exports =
-  generateShippingLabel;
+module.exports = generateShippingLabel;
