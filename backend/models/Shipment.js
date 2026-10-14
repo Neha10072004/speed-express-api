@@ -124,11 +124,11 @@ const shipmentSchema = new mongoose.Schema(
       trim: true,
     },
 
-    weight: {
-      type: Number,
-      required: true,
-      min: 0,
-    },
+   weight: {
+  type: Number,
+  default: null,
+  min: 0,
+},
 
     currentStatus: {
       type: String,

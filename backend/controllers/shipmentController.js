@@ -1,4 +1,3 @@
-
 const Shipment = require("../models/Shipment");
 
 /* =====================================
@@ -87,7 +86,10 @@ const generateUniqueNumbers = async () => {
     }).select("_id");
 
     if (!existingShipment) {
-      return { trackingNumber, awdNumber };
+      return {
+        trackingNumber,
+        awdNumber,
+      };
     }
   }
 
@@ -145,45 +147,60 @@ const createShipment = async (req, res) => {
         typeof value !== "string" || !value.trim()
     );
 
-    if (
-      missingField ||
-      weight === undefined ||
-      weight === null ||
-      String(weight).trim() === ""
-    ) {
+    if (missingField) {
       return res.status(400).json({
         success: false,
         message: "Please fill all required fields.",
       });
     }
 
-    /* Validate weight */
+    /* =====================================
+       VALIDATE OPTIONAL WEIGHT
+    ===================================== */
 
-    const numericWeight = Number(weight);
+    let numericWeight = null;
 
-    if (
-      !Number.isFinite(numericWeight) ||
-      numericWeight <= 0
-    ) {
-      return res.status(400).json({
-        success: false,
-        message: "Please enter a valid package weight.",
-      });
+    const weightIsProvided =
+      weight !== undefined &&
+      weight !== null &&
+      String(weight).trim() !== "";
+
+    if (weightIsProvided) {
+      numericWeight = Number(weight);
+
+      if (
+        !Number.isFinite(numericWeight) ||
+        numericWeight <= 0
+      ) {
+        return res.status(400).json({
+          success: false,
+          message:
+            "Weight must be a positive number when provided.",
+        });
+      }
     }
+
+    /* =====================================
+       TRACKING & AWD NUMBERS
+    ===================================== */
 
     let trackingNumber;
     let awdNumber;
 
-    /* Offline: preserve manually entered numbers */
-
     if (bookingType === "Offline") {
+      /* Offline: preserve manually entered numbers */
+
       trackingNumber = String(
         enteredTrackingNumber || ""
-      ).trim().toUpperCase();
+      )
+        .trim()
+        .toUpperCase();
 
       awdNumber = String(
         enteredAWDNumber || ""
-      ).trim().toUpperCase();
+      )
+        .trim()
+        .toUpperCase();
 
       if (!trackingNumber || !awdNumber) {
         return res.status(400).json({
@@ -201,34 +218,42 @@ const createShipment = async (req, res) => {
       awdNumber = generated.awdNumber;
     }
 
-    /* Get India-local date and time */
+    /* =====================================
+       GET INDIA-LOCAL DATE AND TIME
+    ===================================== */
 
     const india = getIndiaDateTime();
 
     const location = currentLocation.trim();
+
     const remarks =
       typeof currentRemarks === "string" &&
       currentRemarks.trim()
         ? currentRemarks.trim()
         : "Shipment booked successfully";
 
-    /* Prepare initial shipment history */
+    /* =====================================
+       PREPARE INITIAL STATUS HISTORY
+    ===================================== */
 
     const initialHistory = {
       status: "In Transit",
       location,
       date: india.date,
-      time: india.time,
-      remarks,
       day: india.day,
+      time: india.time,
       timestamp: india.timestamp,
       timezone: india.timezone,
+      remarks,
     };
 
-    /* Prepare MongoDB document */
+    /* =====================================
+       PREPARE SHIPMENT DOCUMENT
+    ===================================== */
 
     const shipmentData = {
       bookingType,
+
       trackingNumber,
       awdNumber,
 
@@ -241,20 +266,25 @@ const createShipment = async (req, res) => {
       receiverAddress: receiverAddress.trim(),
 
       packageType: packageType.trim(),
+
+      // Optional: null when the user leaves weight blank
       weight: numericWeight,
 
       currentStatus: "In Transit",
       currentLocation: location,
       currentDate: india.date,
-      currentTime: india.time,
-      currentRemarks: remarks,
-
       currentDay: india.day,
+      currentTime: india.time,
       currentTimestamp: india.timestamp,
       timezone: india.timezone,
+      currentRemarks: remarks,
 
       statusHistory: [initialHistory],
     };
+
+    /* =====================================
+       SAVE SHIPMENT IN MONGODB
+    ===================================== */
 
     const shipment = await Shipment.create(shipmentData);
 
@@ -266,6 +296,8 @@ const createShipment = async (req, res) => {
   } catch (error) {
     console.error("CREATE SHIPMENT ERROR:", error);
 
+    /* Handle duplicate tracking/AWD numbers */
+
     if (error.code === 11000) {
       return res.status(409).json({
         success: false,
@@ -273,6 +305,8 @@ const createShipment = async (req, res) => {
           "The Tracking Number or AWD Number already exists. Check the entered numbers and try again.",
       });
     }
+
+    /* Handle MongoDB validation errors */
 
     if (error.name === "ValidationError") {
       return res.status(400).json({
@@ -412,7 +446,7 @@ const updateShipmentStatus = async (req, res) => {
       });
     }
 
-    /* Always record the server's India-local date and time */
+    /* Always record server India-local date and time */
 
     const india = getIndiaDateTime();
 
@@ -422,27 +456,32 @@ const updateShipmentStatus = async (req, res) => {
         : shipment.currentLocation || "N/A";
 
     const updateRemarks =
-      typeof remarks === "string" ? remarks.trim() : "";
+      typeof remarks === "string"
+        ? remarks.trim()
+        : "";
+
+    /* Update current shipment status */
 
     shipment.currentStatus = status;
     shipment.currentLocation = updateLocation;
     shipment.currentDate = india.date;
-    shipment.currentTime = india.time;
-    shipment.currentRemarks = updateRemarks;
-
     shipment.currentDay = india.day;
+    shipment.currentTime = india.time;
     shipment.currentTimestamp = india.timestamp;
     shipment.timezone = india.timezone;
+    shipment.currentRemarks = updateRemarks;
+
+    /* Append status history */
 
     shipment.statusHistory.push({
       status,
       location: updateLocation,
       date: india.date,
-      time: india.time,
-      remarks: updateRemarks,
       day: india.day,
+      time: india.time,
       timestamp: india.timestamp,
       timezone: india.timezone,
+      remarks: updateRemarks,
     });
 
     await shipment.save();
@@ -464,7 +503,7 @@ const updateShipmentStatus = async (req, res) => {
 };
 
 /* =====================================
-   EXPORT EXISTING CONTROLLER FUNCTIONS
+   EXPORT CONTROLLER FUNCTIONS
 ===================================== */
 
 module.exports = {
