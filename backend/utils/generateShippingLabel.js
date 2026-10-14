@@ -6,11 +6,18 @@ const fs = require("fs");
 
 const generateShippingLabel = async (shipment, res) => {
   try {
+    if (!shipment) {
+      return res.status(400).json({
+        success: false,
+        message: "Shipment details are required.",
+      });
+    }
+
     const doc = new PDFDocument({
       size: "A4",
       margins: {
-        top: 28,
-        bottom: 28,
+        top: 25,
+        bottom: 25,
         left: 32,
         right: 32,
       },
@@ -37,10 +44,13 @@ const generateShippingLabel = async (shipment, res) => {
       "Content-Disposition",
       `attachment; filename="ShippingLabel-${safeTracking}.pdf"`
     );
+    res.setHeader("Cache-Control", "no-store");
 
     doc.pipe(res);
 
     const pageWidth = doc.page.width;
+    const pageHeight = doc.page.height;
+
     const left = 32;
     const right = pageWidth - 32;
     const width = right - left;
@@ -60,7 +70,7 @@ const generateShippingLabel = async (shipment, res) => {
         return fallback;
       }
 
-      return String(value);
+      return String(value).trim();
     };
 
     const drawText = (
@@ -74,9 +84,9 @@ const generateShippingLabel = async (shipment, res) => {
         .font(options.bold ? "Helvetica-Bold" : "Helvetica")
         .fontSize(options.size || 9)
         .fillColor(options.color || textColor)
-        .text(String(value), x, y, {
+        .text(val(value), x, y, {
           width: w,
-          height: options.height || 28,
+          height: options.height || 20,
           ellipsis: true,
           lineBreak: false,
         });
@@ -84,29 +94,27 @@ const generateShippingLabel = async (shipment, res) => {
 
     const drawLine = (x1, y1, x2, y2) => {
       doc
+        .save()
         .strokeColor(borderColor)
         .lineWidth(0.7)
         .moveTo(x1, y1)
         .lineTo(x2, y2)
-        .stroke();
+        .stroke()
+        .restore();
     };
 
     const drawSectionTitle = (title, x, y, w) => {
       doc
+        .save()
         .rect(x, y, w, 21)
-        .fill(lightBlue);
+        .fillAndStroke(lightBlue, borderColor)
+        .restore();
 
       drawText(title, x + 7, y + 6, w - 14, {
         bold: true,
         size: 9,
         color: blue,
       });
-
-      doc
-        .rect(x, y, w, 21)
-        .strokeColor(borderColor)
-        .lineWidth(0.7)
-        .stroke();
     };
 
     const drawField = (
@@ -115,13 +123,15 @@ const generateShippingLabel = async (shipment, res) => {
       x,
       y,
       w,
-      h = 32
+      h = 34
     ) => {
       doc
+        .save()
         .rect(x, y, w, h)
         .strokeColor(borderColor)
         .lineWidth(0.6)
-        .stroke();
+        .stroke()
+        .restore();
 
       drawText(label.toUpperCase(), x + 6, y + 5, w - 12, {
         bold: true,
@@ -129,7 +139,7 @@ const generateShippingLabel = async (shipment, res) => {
         color: muted,
       });
 
-      drawText(val(value), x + 6, y + 17, w - 12, {
+      drawText(value, x + 6, y + 17, w - 12, {
         bold: true,
         size: 9,
         height: h - 18,
@@ -140,9 +150,14 @@ const generateShippingLabel = async (shipment, res) => {
     // HEADER
     // --------------------------------------------------
 
+    const headerY = 25;
+    const headerHeight = 58;
+
     doc
-      .rect(left, 25, width, 58)
-      .fill(blue);
+      .save()
+      .rect(left, headerY, width, headerHeight)
+      .fill(blue)
+      .restore();
 
     const logoPath = path.join(
       __dirname,
@@ -161,7 +176,10 @@ const generateShippingLabel = async (shipment, res) => {
 
         titleX = left + 95;
       } catch (err) {
-        console.error("Could not load Speed Express logo:", err.message);
+        console.error(
+          "Could not load Speed Express logo:",
+          err.message
+        );
       }
     }
 
@@ -190,6 +208,7 @@ const generateShippingLabel = async (shipment, res) => {
       .text("SHIPPING LABEL", left, 94, {
         width,
         align: "center",
+        lineBreak: false,
       });
 
     // --------------------------------------------------
@@ -198,23 +217,39 @@ const generateShippingLabel = async (shipment, res) => {
 
     const barcodeTop = 116;
     const barcodeHeight = 73;
+    const barcodeWidth = width - 235;
+    const barcodeX = left + 220;
 
     doc
+      .save()
       .rect(left, barcodeTop, width, barcodeHeight)
       .strokeColor(borderColor)
       .lineWidth(0.8)
-      .stroke();
+      .stroke()
+      .restore();
 
-    drawText("AWD NUMBER", left + 8, barcodeTop + 7, width - 16, {
-      bold: true,
-      size: 8,
-      color: blue,
-    });
+    drawText(
+      "AWD NUMBER",
+      left + 8,
+      barcodeTop + 7,
+      200,
+      {
+        bold: true,
+        size: 8,
+        color: blue,
+      }
+    );
 
-    drawText(awdNumber, left + 8, barcodeTop + 22, width - 16, {
-      bold: true,
-      size: 11,
-    });
+    drawText(
+      awdNumber,
+      left + 8,
+      barcodeTop + 24,
+      200,
+      {
+        bold: true,
+        size: 11,
+      }
+    );
 
     try {
       const barcodeBuffer = await bwipjs.toBuffer({
@@ -227,22 +262,26 @@ const generateShippingLabel = async (shipment, res) => {
         textsize: 9,
         backgroundcolor: "FFFFFF",
         barcolor: "000000",
+        padding: 2,
       });
 
-      doc.image(barcodeBuffer, left + 220, barcodeTop + 7, {
-        fit: [width - 235, 59],
+      doc.image(barcodeBuffer, barcodeX, barcodeTop + 6, {
+        fit: [barcodeWidth, 61],
         align: "center",
         valign: "center",
       });
     } catch (err) {
-      console.error("Barcode generation failed:", err);
+      console.error("Barcode generation failed:", err.message);
 
       drawText(
         "Barcode unavailable",
-        left + 220,
+        barcodeX,
         barcodeTop + 32,
-        width - 235,
-        { color: "#B00020", bold: true }
+        barcodeWidth,
+        {
+          color: "#B00020",
+          bold: true,
+        }
       );
     }
 
@@ -299,62 +338,99 @@ const generateShippingLabel = async (shipment, res) => {
 
     y += 47;
 
-    const half = (width - 10) / 2;
+    const columnGap = 10;
+    const half = (width - columnGap) / 2;
+    const senderX = left;
+    const receiverX = left + half + columnGap;
 
-    drawSectionTitle("FROM / SENDER", left, y, half);
-    drawSectionTitle("TO / RECEIVER", left + half + 10, y, half);
+    drawSectionTitle("FROM / SENDER", senderX, y, half);
+    drawSectionTitle("TO / RECEIVER", receiverX, y, half);
 
     y += 21;
 
-    const senderX = left;
-    const receiverX = left + half + 10;
-
     const tableRows = [
-      ["Name", shipment.senderName, shipment.receiverName],
-      ["Phone", shipment.senderPhone, shipment.receiverPhone],
-      ["Address", shipment.senderAddress, shipment.receiverAddress],
+      {
+        label: "NAME",
+        sender: shipment.senderName,
+        receiver: shipment.receiverName,
+        height: 30,
+      },
+      {
+        label: "PHONE",
+        sender: shipment.senderPhone,
+        receiver: shipment.receiverPhone,
+        height: 30,
+      },
+      {
+        label: "ADDRESS",
+        sender: shipment.senderAddress,
+        receiver: shipment.receiverAddress,
+        height: 49,
+      },
     ];
 
-    const rowHeights = [30, 30, 49];
-
-    tableRows.forEach((row, index) => {
-      const h = rowHeights[index];
-
+    tableRows.forEach((row) => {
       [senderX, receiverX].forEach((x) => {
         doc
-          .rect(x, y, half, h)
+          .save()
+          .rect(x, y, half, row.height)
           .strokeColor(borderColor)
           .lineWidth(0.6)
-          .stroke();
+          .stroke()
+          .restore();
       });
 
-      drawText(row[0].toUpperCase(), senderX + 6, y + 4, half - 12, {
-        bold: true,
-        size: 7,
-        color: muted,
-      });
+      drawText(
+        row.label,
+        senderX + 6,
+        y + 4,
+        half - 12,
+        {
+          bold: true,
+          size: 7,
+          color: muted,
+        }
+      );
 
-      drawText(row[1], senderX + 6, y + 15, half - 12, {
-        size: 8,
-        height: h - 16,
-      });
+      drawText(
+        row.sender,
+        senderX + 6,
+        y + 15,
+        half - 12,
+        {
+          size: 8,
+          height: row.height - 16,
+        }
+      );
 
-      drawText(row[0].toUpperCase(), receiverX + 6, y + 4, half - 12, {
-        bold: true,
-        size: 7,
-        color: muted,
-      });
+      drawText(
+        row.label,
+        receiverX + 6,
+        y + 4,
+        half - 12,
+        {
+          bold: true,
+          size: 7,
+          color: muted,
+        }
+      );
 
-      drawText(row[2], receiverX + 6, y + 15, half - 12, {
-        size: 8,
-        height: h - 16,
-      });
+      drawText(
+        row.receiver,
+        receiverX + 6,
+        y + 15,
+        half - 12,
+        {
+          size: 8,
+          height: row.height - 16,
+        }
+      );
 
-      y += h;
+      y += row.height;
     });
 
     // --------------------------------------------------
-    // CURRENT STATUS TABLE
+    // SHIPMENT STATUS
     // --------------------------------------------------
 
     y += 12;
@@ -362,7 +438,8 @@ const generateShippingLabel = async (shipment, res) => {
     drawSectionTitle("SHIPMENT STATUS", left, y, width);
     y += 21;
 
-    const statusCol = width / 4;
+    const statusGap = 0;
+    const statusCol = (width - statusGap * 3) / 4;
 
     drawField(
       "Status",
@@ -400,7 +477,7 @@ const generateShippingLabel = async (shipment, res) => {
       34
     );
 
-    y += 34;
+    y += 44;
 
     // --------------------------------------------------
     // REMARKS
@@ -409,30 +486,41 @@ const generateShippingLabel = async (shipment, res) => {
     const remarksHeight = 42;
 
     doc
+      .save()
       .rect(left, y, width, remarksHeight)
       .strokeColor(borderColor)
       .lineWidth(0.7)
-      .stroke();
+      .stroke()
+      .restore();
 
-    drawText("REMARKS", left + 7, y + 5, width - 14, {
-      bold: true,
-      size: 7,
-      color: muted,
-    });
+    drawText(
+      "REMARKS",
+      left + 7,
+      y + 5,
+      width - 14,
+      {
+        bold: true,
+        size: 7,
+        color: muted,
+      }
+    );
 
     drawText(
       val(shipment.currentRemarks, "No remarks"),
       left + 7,
       y + 18,
       width - 14,
-      { size: 8, height: 20 }
+      {
+        size: 8,
+        height: 20,
+      }
     );
 
     // --------------------------------------------------
     // FOOTER
     // --------------------------------------------------
 
-    const footerY = 790;
+    const footerY = pageHeight - 52;
 
     drawLine(left, footerY, right, footerY);
 
@@ -441,7 +529,11 @@ const generateShippingLabel = async (shipment, res) => {
       left,
       footerY + 8,
       width,
-      { bold: true, size: 8, color: blue }
+      {
+        bold: true,
+        size: 8,
+        color: blue,
+      }
     );
 
     drawText(
@@ -449,17 +541,31 @@ const generateShippingLabel = async (shipment, res) => {
       left,
       footerY + 22,
       width,
-      { size: 7, color: muted }
+      {
+        size: 7,
+        color: muted,
+      }
     );
+
+    // Ensure the content fits on one A4 page.
+    if (y + remarksHeight > footerY - 10) {
+      console.warn(
+        "Shipping label content is close to the footer. " +
+        "Review field heights if adding more sections."
+      );
+    }
 
     doc.end();
   } catch (err) {
-    console.error("Shipping label generation error:", err);
+    console.error(
+      "Shipping label generation error:",
+      err
+    );
 
     if (!res.headersSent) {
       return res.status(500).json({
         success: false,
-        message: "Failed to generate shipping label",
+        message: "Failed to generate shipping label.",
       });
     }
 

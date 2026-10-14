@@ -1,3 +1,4 @@
+
 const mongoose = require("mongoose");
 
 const statusHistorySchema = new mongoose.Schema(
@@ -15,6 +16,7 @@ const statusHistorySchema = new mongoose.Schema(
     location: {
       type: String,
       required: true,
+      trim: true,
     },
 
     date: {
@@ -22,14 +24,30 @@ const statusHistorySchema = new mongoose.Schema(
       required: true,
     },
 
+    day: {
+      type: String,
+      default: "",
+    },
+
     time: {
       type: String,
       required: true,
     },
 
+    timestamp: {
+      type: Date,
+      default: Date.now,
+    },
+
+    timezone: {
+      type: String,
+      default: "Asia/Kolkata",
+    },
+
     remarks: {
       type: String,
       default: "",
+      trim: true,
     },
   },
   {
@@ -134,14 +152,30 @@ const shipmentSchema = new mongoose.Schema(
       required: true,
     },
 
+    currentDay: {
+      type: String,
+      default: "",
+    },
+
     currentTime: {
       type: String,
       required: true,
     },
 
+    currentTimestamp: {
+      type: Date,
+      default: Date.now,
+    },
+
+    timezone: {
+      type: String,
+      default: "Asia/Kolkata",
+    },
+
     currentRemarks: {
       type: String,
       default: "",
+      trim: true,
     },
 
     statusHistory: {
