@@ -1,47 +1,40 @@
 
 const mongoose = require("mongoose");
 
-const statusHistorySchema = new mongoose.Schema(
+// --------------------------------------------------
+// ALLOWED SHIPMENT STATUSES
+// Must match shipmentController.js
+// --------------------------------------------------
+
+const ALLOWED_STATUSES = [
+  "Shipment Booked",
+  "Material Received at Origin Office",
+  "In Transit to Next Hub",
+  "Vehicle Delayed",
+  "Out For Delivery",
+  "Delivered Successfully",
+  "Shipment Cancelled",
+  "Delivery Attempted - Customer Unavailable",
+  "Vehicle Breakdown",
+];
+
+// --------------------------------------------------
+// SHIPMENT HISTORY SCHEMA
+// Records status and location changes over time
+// --------------------------------------------------
+
+const shipmentHistorySchema = new mongoose.Schema(
   {
     status: {
       type: String,
-      enum: [
-        "In Transit",
-        "Out For Delivery",
-        "Delivered",
-      ],
+      enum: ALLOWED_STATUSES,
       required: true,
     },
 
     location: {
       type: String,
-      required: true,
-      trim: true,
-    },
-
-    date: {
-      type: String,
-      required: true,
-    },
-
-    day: {
-      type: String,
       default: "",
-    },
-
-    time: {
-      type: String,
-      required: true,
-    },
-
-    timestamp: {
-      type: Date,
-      default: Date.now,
-    },
-
-    timezone: {
-      type: String,
-      default: "Asia/Kolkata",
+      trim: true,
     },
 
     remarks: {
@@ -49,38 +42,52 @@ const statusHistorySchema = new mongoose.Schema(
       default: "",
       trim: true,
     },
+
+    timestamp: {
+      type: Date,
+      default: Date.now,
+    },
   },
   {
-    _id: false,
+    _id: true,
   }
 );
 
+// --------------------------------------------------
+// MAIN SHIPMENT SCHEMA
+// --------------------------------------------------
+
 const shipmentSchema = new mongoose.Schema(
   {
+    // ----------------------------------------------
+    // BOOKING INFORMATION
+    // ----------------------------------------------
+
     bookingType: {
       type: String,
       enum: ["Online", "Offline"],
-      required: true,
       default: "Offline",
+      required: true,
     },
 
     trackingNumber: {
       type: String,
       required: true,
       unique: true,
-      index: true,
       trim: true,
-      uppercase: true,
+      index: true,
     },
 
     awdNumber: {
       type: String,
-      required: true,
-      unique: true,
-      index: true,
+      default: "",
       trim: true,
-      uppercase: true,
+      index: true,
     },
+
+    // ----------------------------------------------
+    // SENDER DETAILS
+    // ----------------------------------------------
 
     senderName: {
       type: String,
@@ -100,6 +107,10 @@ const shipmentSchema = new mongoose.Schema(
       trim: true,
     },
 
+    // ----------------------------------------------
+    // RECEIVER DETAILS
+    // ----------------------------------------------
+
     receiverName: {
       type: String,
       required: true,
@@ -118,77 +129,125 @@ const shipmentSchema = new mongoose.Schema(
       trim: true,
     },
 
+    // ----------------------------------------------
+    // PACKAGE DETAILS
+    // ----------------------------------------------
+
     packageType: {
       type: String,
-      required: true,
+      default: "Parcel",
       trim: true,
     },
 
-   weight: {
-  type: Number,
-  default: null,
-  min: 0,
-},
+    // Weight is optional.
+    weight: {
+      type: Number,
+      default: undefined,
+      min: [0, "Weight cannot be negative."],
+    },
 
-    currentStatus: {
+    productCount: {
+      type: Number,
+      default: 1,
+      min: [1, "Product count must be at least 1."],
+    },
+
+    // ----------------------------------------------
+    // BILLING DETAILS
+    // ----------------------------------------------
+
+    invoiceNumber: {
       type: String,
-      enum: [
-        "In Transit",
-        "Out For Delivery",
-        "Delivered",
-      ],
-      default: "In Transit",
+      default: "",
+      trim: true,
+    },
+
+    eWayBillNumber: {
+      type: String,
+      default: "",
+      trim: true,
+    },
+
+    // ----------------------------------------------
+    // SHIPMENT STATUS AND LOCATION
+    // ----------------------------------------------
+
+    status: {
+      type: String,
+      enum: ALLOWED_STATUSES,
+      default: "Shipment Booked",
       required: true,
     },
 
     currentLocation: {
       type: String,
-      required: true,
+      default: "",
       trim: true,
     },
 
-    currentDate: {
-      type: String,
-      required: true,
-    },
-
-    currentDay: {
-      type: String,
-      default: "",
-    },
-
-    currentTime: {
-      type: String,
-      required: true,
-    },
-
-    currentTimestamp: {
-      type: Date,
-      default: Date.now,
-    },
-
-    timezone: {
-      type: String,
-      default: "Asia/Kolkata",
-    },
-
-    currentRemarks: {
+    remarks: {
       type: String,
       default: "",
       trim: true,
     },
 
-    statusHistory: {
-      type: [statusHistorySchema],
+    // ----------------------------------------------
+    // TRACKING HISTORY
+    // ----------------------------------------------
+
+    history: {
+      type: [shipmentHistorySchema],
       default: [],
+    },
+
+    // ----------------------------------------------
+    // OPTIONAL PROOF / DOCUMENT INFORMATION
+    // ----------------------------------------------
+
+    proofOfDelivery: {
+      type: String,
+      default: "",
     },
   },
   {
     timestamps: true,
+    minimize: false,
   }
 );
 
-module.exports = mongoose.model(
-  "Shipment",
-  shipmentSchema
-);
+// --------------------------------------------------
+// AUTOMATIC HISTORY ENTRY
+// Record the initial status and subsequent changes.
+// --------------------------------------------------
+
+shipmentSchema.pre("save", function (next) {
+  if (this.isNew) {
+    this.history.push({
+      status: this.status,
+      location: this.currentLocation || "",
+      remarks: this.remarks || "Shipment booking created.",
+      timestamp: new Date(),
+    });
+  } else if (
+    this.isModified("status") ||
+    this.isModified("currentLocation") ||
+    this.isModified("remarks")
+  ) {
+    this.history.push({
+      status: this.status,
+      location: this.currentLocation || "",
+      remarks: this.remarks || "",
+      timestamp: new Date(),
+    });
+  }
+
+  next();
+});
+
+// --------------------------------------------------
+// EXPORT MODEL
+// --------------------------------------------------
+
+module.exports =
+  mongoose.models.Shipment ||
+  mongoose.model("Shipment", shipmentSchema);

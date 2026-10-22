@@ -1,125 +1,435 @@
+
 import React, { useState } from "react";
+import "./AdminPages.css";
 
 const API_BASE_URL = (
   import.meta.env.VITE_API_URL || "http://localhost:5000/api"
 ).replace(/\/+$/, "");
 
-const initialForm = {
+const STATUS_OPTIONS = [
+  "Shipment Booked",
+  "Material Received at Origin Office",
+  "In Transit to Next Hub",
+  "Vehicle Delayed",
+  "Out For Delivery",
+  "Delivered Successfully",
+  "Shipment Cancelled",
+  "Delivery Attempted - Customer Unavailable",
+  "Vehicle Breakdown",
+];
+
+const PACKAGE_TYPES = [
+  "Parcel",
+  "Document",
+  "Box",
+  "Corporate Gift",
+  "Other",
+];
+
+const EMPTY_FORM = {
   bookingType: "Offline",
   trackingNumber: "",
-  awdNumber: "",
   senderName: "",
   senderPhone: "",
   senderAddress: "",
   receiverName: "",
   receiverPhone: "",
   receiverAddress: "",
-  packageType: "",
-  weight: "",
-  currentStatus: "In Transit",
+  status: "Shipment Booked",
   currentLocation: "",
-  currentRemarks: "",
+  remarks: "",
+  packageType: "Parcel",
+  weight: "",
+  productCount: "1",
+  invoiceNumber: "",
+  eWayBillNumber: "",
 };
 
+const getShipmentFromResponse = (result) =>
+  result?.shipment || result?.data?.shipment || result?.data || result;
+
+const toFormValues = (shipment) => ({
+  bookingType: shipment.bookingType || "Offline",
+  trackingNumber: shipment.trackingNumber || "",
+  senderName: shipment.senderName || "",
+  senderPhone: shipment.senderPhone || "",
+  senderAddress: shipment.senderAddress || "",
+  receiverName: shipment.receiverName || "",
+  receiverPhone: shipment.receiverPhone || "",
+  receiverAddress: shipment.receiverAddress || "",
+  status:
+    shipment.currentStatus ||
+    shipment.status ||
+    "Shipment Booked",
+  currentLocation: shipment.currentLocation || "",
+  remarks:
+    shipment.currentRemarks ??
+    shipment.remarks ??
+    "",
+  packageType: shipment.packageType || "Parcel",
+  weight:
+    shipment.weight === undefined || shipment.weight === null
+      ? ""
+      : String(shipment.weight),
+  productCount:
+    shipment.productCount === undefined ||
+    shipment.productCount === null
+      ? "1"
+      : String(shipment.productCount),
+  invoiceNumber: shipment.invoiceNumber || "",
+  eWayBillNumber: shipment.eWayBillNumber || "",
+});
+
+function SectionHeader({ number, title, description }) {
+  return (
+    <div className="booking-section-header">
+      <div className="booking-section-number">{number}</div>
+      <div>
+        <h3>{title}</h3>
+        <p>{description}</p>
+      </div>
+    </div>
+  );
+}
+
+function TextField({
+  label,
+  name,
+  value,
+  onChange,
+  placeholder,
+  required = false,
+  type = "text",
+  optional = false,
+  min,
+  step,
+  help,
+  disabled = false,
+}) {
+  return (
+    <div className="booking-field">
+      <label htmlFor={name}>
+        {label}
+        {required && <span className="booking-required-mark"> *</span>}
+        {optional && <span className="field-optional"> (Optional)</span>}
+      </label>
+
+      <input
+        id={name}
+        name={name}
+        type={type}
+        value={value}
+        onChange={onChange}
+        placeholder={placeholder}
+        required={required}
+        min={min}
+        step={step}
+        disabled={disabled}
+      />
+
+      {help && <small>{help}</small>}
+    </div>
+  );
+}
+
+function SelectField({
+  label,
+  name,
+  value,
+  onChange,
+  options,
+  required = false,
+}) {
+  return (
+    <div className="booking-field">
+      <label htmlFor={name}>
+        {label}
+        {required && <span className="booking-required-mark"> *</span>}
+      </label>
+
+      <select
+        id={name}
+        name={name}
+        value={value}
+        onChange={onChange}
+        required={required}
+      >
+        {options.map((option) => {
+          const item =
+            typeof option === "string"
+              ? { value: option, label: option }
+              : option;
+
+          return (
+            <option key={item.value} value={item.value}>
+              {item.label}
+            </option>
+          );
+        })}
+      </select>
+    </div>
+  );
+}
+
+function TextAreaField({
+  label,
+  name,
+  value,
+  onChange,
+  placeholder,
+  required = false,
+  optional = false,
+}) {
+  return (
+    <div className="booking-field booking-field-full">
+      <label htmlFor={name}>
+        {label}
+        {required && <span className="booking-required-mark"> *</span>}
+        {optional && <span className="field-optional"> (Optional)</span>}
+      </label>
+
+      <textarea
+        id={name}
+        name={name}
+        value={value}
+        onChange={onChange}
+        placeholder={placeholder}
+        required={required}
+        rows={3}
+      />
+    </div>
+  );
+}
+
 export default function CreateBooking() {
-  const [formData, setFormData] = useState(initialForm);
+  const [mode, setMode] = useState("create");
+  const [form, setForm] = useState(EMPTY_FORM);
+  const [searchNumber, setSearchNumber] = useState("");
+  const [editingTrackingNumber, setEditingTrackingNumber] = useState("");
+  const [editingAwdNumber, setEditingAwdNumber] = useState("");
   const [loading, setLoading] = useState(false);
-  const [error, setError] = useState("");
-  const [success, setSuccess] = useState("");
-  const [createdShipment, setCreatedShipment] = useState(null);
+  const [searching, setSearching] = useState(false);
+  const [message, setMessage] = useState({
+    type: "",
+    text: "",
+  });
+  const [savedShipment, setSavedShipment] = useState(null);
+
+  const setNotice = (type, text) => {
+    setMessage({ type, text });
+  };
 
   const handleChange = (event) => {
     const { name, value } = event.target;
 
-    setFormData((previous) => ({
+    setForm((previous) => ({
       ...previous,
-      [name]:
-        name === "trackingNumber" || name === "awdNumber"
-          ? value.toUpperCase()
-          : value,
+      [name]: value,
     }));
 
-    setError("");
-    setSuccess("");
+    if (message.text) {
+      setMessage({ type: "", text: "" });
+    }
   };
+
+  const resetForm = () => {
+    setForm(EMPTY_FORM);
+    setSearchNumber("");
+    setEditingTrackingNumber("");
+    setEditingAwdNumber("");
+    setSavedShipment(null);
+    setMessage({ type: "", text: "" });
+  };
+
+  const switchMode = (nextMode) => {
+    if (loading || searching) return;
+
+    setMode(nextMode);
+    resetForm();
+  };
+
+  // Find an existing shipment by tracking number or AWD number.
+  const handleFindShipment = async (event) => {
+    event.preventDefault();
+
+    const identifier = searchNumber.trim();
+
+    if (!identifier) {
+      setNotice("error", "Enter a tracking number or AWD number.");
+      return;
+    }
+
+    setSearching(true);
+    setSavedShipment(null);
+    setEditingTrackingNumber("");
+    setEditingAwdNumber("");
+    setMessage({ type: "", text: "" });
+
+    try {
+      const response = await fetch(
+        `${API_BASE_URL}/shipments/${encodeURIComponent(identifier)}`
+      );
+
+      const result = await response.json().catch(() => ({}));
+
+      if (!response.ok || result.success === false) {
+        throw new Error(
+          result.message || "Shipment not found. Check the number and try again."
+        );
+      }
+
+      const shipment = getShipmentFromResponse(result);
+
+      if (!shipment || !shipment.trackingNumber) {
+        throw new Error(
+          "The API response did not include shipment details or a tracking number."
+        );
+      }
+
+      setForm(toFormValues(shipment));
+      setEditingTrackingNumber(shipment.trackingNumber);
+      setEditingAwdNumber(shipment.awdNumber || "");
+      setSavedShipment(shipment);
+
+      setNotice(
+        "success",
+        `Shipment ${shipment.trackingNumber} loaded. You can now edit the details.`
+      );
+    } catch (error) {
+      console.error("Find shipment error:", error);
+      setNotice("error", error.message || "Unable to load this shipment.");
+    } finally {
+      setSearching(false);
+    }
+  };
+
+  const validateForm = () => {
+    if (mode === "create" && form.bookingType === "Offline") {
+      if (!form.trackingNumber.trim()) {
+        return "Enter the manual tracking number for the offline booking.";
+      }
+    }
+
+    const requiredFields = [
+      ["senderName", "Enter the sender name."],
+      ["senderPhone", "Enter the sender phone number."],
+      ["senderAddress", "Enter the sender address."],
+      ["receiverName", "Enter the receiver name."],
+      ["receiverPhone", "Enter the receiver phone number."],
+      ["receiverAddress", "Enter the receiver address."],
+      ["currentLocation", "Enter the current shipment location."],
+    ];
+
+    for (const [key, error] of requiredFields) {
+      if (!String(form[key] || "").trim()) return error;
+    }
+
+    const phonePattern = /^[+]?[\d\s()-]{7,20}$/;
+
+    if (!phonePattern.test(form.senderPhone.trim())) {
+      return "Enter a valid sender phone number.";
+    }
+
+    if (!phonePattern.test(form.receiverPhone.trim())) {
+      return "Enter a valid receiver phone number.";
+    }
+
+    if (
+      form.weight.trim() !== "" &&
+      (!Number.isFinite(Number(form.weight)) ||
+        Number(form.weight) <= 0)
+    ) {
+      return "Weight must be greater than zero, or leave it blank.";
+    }
+
+    if (
+      form.productCount.trim() !== "" &&
+      (!Number.isInteger(Number(form.productCount)) ||
+        Number(form.productCount) < 1)
+    ) {
+      return "Product count must be a whole number of at least 1.";
+    }
+
+    if (!STATUS_OPTIONS.includes(form.status)) {
+      return "Select a valid shipment status.";
+    }
+
+    if (!PACKAGE_TYPES.includes(form.packageType)) {
+      return "Select a valid package type.";
+    }
+
+    return "";
+  };
+
+  const buildPayload = () => ({
+    senderName: form.senderName.trim(),
+    senderPhone: form.senderPhone.trim(),
+    senderAddress: form.senderAddress.trim(),
+    receiverName: form.receiverName.trim(),
+    receiverPhone: form.receiverPhone.trim(),
+    receiverAddress: form.receiverAddress.trim(),
+    packageType: form.packageType,
+    weight: form.weight.trim() === "" ? null : Number(form.weight),
+    productCount:
+      form.productCount.trim() === "" ? 1 : Number(form.productCount),
+    invoiceNumber: form.invoiceNumber.trim(),
+    eWayBillNumber: form.eWayBillNumber.trim(),
+
+    // These aliases support the existing Speed Express status fields.
+    currentStatus: form.status,
+    status: form.status,
+    currentLocation: form.currentLocation.trim(),
+    currentRemarks: form.remarks.trim(),
+    remarks: form.remarks.trim(),
+  });
 
   const handleSubmit = async (event) => {
     event.preventDefault();
 
-    setError("");
-    setSuccess("");
-    setCreatedShipment(null);
+    const validationError = validateForm();
 
-    // Validate required fields.
-    const requiredFields = [
-      ["senderName", "Please enter the sender name."],
-      ["senderPhone", "Please enter the sender phone number."],
-      ["senderAddress", "Please enter the sender address."],
-      ["receiverName", "Please enter the receiver name."],
-      ["receiverPhone", "Please enter the receiver phone number."],
-      ["receiverAddress", "Please enter the receiver address."],
-      ["packageType", "Please select a package type."],
-      ["currentLocation", "Please enter the current location."],
-    ];
-
-    for (const [field, message] of requiredFields) {
-      if (!String(formData[field] ?? "").trim()) {
-        setError(message);
-        return;
-      }
-    }
-
-    // Weight is OPTIONAL. Validate it only when provided.
-    const weightText = String(formData.weight ?? "").trim();
-    const weight =
-      weightText === "" ? null : Number(weightText);
-
-    if (
-      weight !== null &&
-      (!Number.isFinite(weight) || weight <= 0)
-    ) {
-      setError("Weight must be a positive number when provided.");
+    if (validationError) {
+      setNotice("error", validationError);
       return;
     }
 
-    // Offline bookings require manually entered shipment IDs.
-    if (formData.bookingType === "Offline") {
-      if (!formData.trackingNumber.trim()) {
-        setError("Please enter the tracking number for an offline booking.");
-        return;
-      }
-
-      if (!formData.awdNumber.trim()) {
-        setError("Please enter the AWD number for an offline booking.");
-        return;
-      }
+    if (mode === "edit" && !editingTrackingNumber) {
+      setNotice(
+        "error",
+        "Find an existing shipment before trying to save edits."
+      );
+      return;
     }
 
-    const payload = {
-      bookingType: formData.bookingType,
-      senderName: formData.senderName.trim(),
-      senderPhone: formData.senderPhone.trim(),
-      senderAddress: formData.senderAddress.trim(),
-      receiverName: formData.receiverName.trim(),
-      receiverPhone: formData.receiverPhone.trim(),
-      receiverAddress: formData.receiverAddress.trim(),
-      packageType: formData.packageType,
-      weight,
-      currentStatus: formData.currentStatus,
-      currentLocation: formData.currentLocation.trim(),
-      currentRemarks: formData.currentRemarks.trim(),
-    };
-
-    if (formData.bookingType === "Offline") {
-      payload.trackingNumber = formData.trackingNumber.trim().toUpperCase();
-      payload.awdNumber = formData.awdNumber.trim().toUpperCase();
-    }
+    setLoading(true);
+    setMessage({ type: "", text: "" });
 
     try {
-      setLoading(true);
+      const payload = buildPayload();
 
-      const response = await fetch(`${API_BASE_URL}/shipments`, {
-        method: "POST",
+      let url;
+      let method;
+
+      if (mode === "edit") {
+        // The canonical tracking number is used even if the search used AWD.
+        url = `${API_BASE_URL}/shipments/${encodeURIComponent(
+          editingTrackingNumber
+        )}`;
+        method = "PATCH";
+      } else {
+        url = `${API_BASE_URL}/shipments`;
+        method = "POST";
+
+        payload.bookingType = form.bookingType;
+
+        if (form.bookingType === "Offline") {
+          payload.trackingNumber = form.trackingNumber.trim();
+        }
+        // Online bookings leave trackingNumber out so the backend can generate it.
+      }
+
+      const response = await fetch(url, {
+        method,
         headers: {
           "Content-Type": "application/json",
         },
@@ -128,485 +438,505 @@ export default function CreateBooking() {
 
       const result = await response.json().catch(() => ({}));
 
-      if (!response.ok) {
+      if (!response.ok || result.success === false) {
         throw new Error(
           result.message ||
-            result.error ||
-            "Unable to create the shipment."
+            (mode === "edit"
+              ? "Unable to update the shipment."
+              : "Unable to create the shipment.")
         );
       }
 
-      const shipment = result.shipment || result.data || result;
+      const shipment = getShipmentFromResponse(result);
 
-      setCreatedShipment(shipment);
-      setSuccess("Booking created successfully!");
-      setFormData(initialForm);
-    } catch (err) {
-      console.error("Create booking error:", err);
-      setError(
-        err.message ||
-          "Unable to create the booking. Please check your API connection."
+      if (mode === "edit") {
+        const updatedShipment =
+          shipment && shipment.trackingNumber
+            ? shipment
+            : {
+                ...savedShipment,
+                ...payload,
+                trackingNumber: editingTrackingNumber,
+                awdNumber: editingAwdNumber,
+              };
+
+        setSavedShipment(updatedShipment);
+        setForm(toFormValues(updatedShipment));
+        setNotice(
+          "success",
+          `Shipment ${editingTrackingNumber} updated successfully.`
+        );
+      } else {
+        const trackingNumber = shipment?.trackingNumber;
+
+        setSavedShipment(shipment || null);
+        setNotice(
+          "success",
+          trackingNumber
+            ? `Booking created successfully. Tracking number: ${trackingNumber}`
+            : "Booking created successfully."
+        );
+
+        setForm(EMPTY_FORM);
+      }
+    } catch (error) {
+      console.error("Save shipment error:", error);
+      setNotice(
+        "error",
+        error.message || "Something went wrong while saving the shipment."
       );
     } finally {
       setLoading(false);
     }
   };
 
-  const getShipmentNumber = () => {
-    return (
-      createdShipment?.trackingNumber ||
-      createdShipment?.shipment?.trackingNumber ||
-      ""
-    );
-  };
-
-  const downloadLabel = async () => {
-    const trackingNumber = getShipmentNumber();
-
-    if (!trackingNumber) {
-      setError("Tracking number is not available for this shipment.");
-      return;
-    }
-
-    try {
-      setError("");
-
-      const response = await fetch(
-        `${API_BASE_URL}/shipments/${encodeURIComponent(
-          trackingNumber
-        )}/label`,
-        { method: "GET" }
-      );
-
-      if (!response.ok) {
-        const result = await response.json().catch(() => ({}));
-        throw new Error(
-          result.message || "Unable to download the shipping label."
-        );
-      }
-
-      const blob = await response.blob();
-      const url = window.URL.createObjectURL(blob);
-      const link = document.createElement("a");
-
-      link.href = url;
-      link.download = `${trackingNumber}-shipping-label.pdf`;
-      document.body.appendChild(link);
-      link.click();
-      link.remove();
-
-      window.URL.revokeObjectURL(url);
-    } catch (err) {
-      console.error("Download label error:", err);
-      setError(err.message || "Unable to download the shipping label.");
-    }
-  };
-
-  const printLabel = async () => {
-    const trackingNumber = getShipmentNumber();
-
-    if (!trackingNumber) {
-      setError("Tracking number is not available for this shipment.");
-      return;
-    }
-
-    let objectUrl;
-
-    try {
-      setError("");
-
-      const response = await fetch(
-        `${API_BASE_URL}/shipments/${encodeURIComponent(
-          trackingNumber
-        )}/label`,
-        { method: "GET" }
-      );
-
-      if (!response.ok) {
-        const result = await response.json().catch(() => ({}));
-        throw new Error(
-          result.message || "Unable to prepare the shipping label for printing."
-        );
-      }
-
-      const blob = await response.blob();
-      objectUrl = window.URL.createObjectURL(blob);
-
-      const printWindow = window.open(objectUrl, "_blank");
-
-      if (!printWindow) {
-        window.URL.revokeObjectURL(objectUrl);
-        setError(
-          "The print window was blocked. Allow pop-ups and try again."
-        );
-        return;
-      }
-
-      // Give the PDF viewer time to load before opening the print dialog.
-      printWindow.addEventListener("load", () => {
-        printWindow.focus();
-        printWindow.print();
-      });
-    } catch (err) {
-      console.error("Print label error:", err);
-      setError(err.message || "Unable to print the shipping label.");
-    }
-  };
-
   return (
-    <div className="create-booking-page">
-      <div className="page-heading">
-        <div>
-          <div className="admin-page-kicker">SPEED EXPRESS</div>
-          <h2>Create Booking</h2>
-          <p>Create and manage shipment bookings.</p>
+    <main className="admin-page booking-page">
+      <header className="booking-page-header">
+        <div className="booking-header-content">
+          <div className="booking-breadcrumb">
+            ADMIN DASHBOARD <span>/</span> SHIPMENT MANAGEMENT
+          </div>
+
+          <h1>{mode === "edit" ? "Edit Shipment Booking" : "Create Booking"}</h1>
+
+          <p>
+            {mode === "edit"
+              ? "Find a saved shipment and update sender, receiver, package, status, location, and remarks."
+              : "Create a new shipment with sender, receiver, package, and initial tracking details."}
+          </p>
         </div>
+
+        <div className="booking-header-icon" aria-hidden="true">
+          <svg
+            viewBox="0 0 24 24"
+            width="38"
+            height="38"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="1.7"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+          >
+            <path d="M21 8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16Z" />
+            <path d="m3.3 7 8.7 5 8.7-5" />
+            <path d="M12 22V12" />
+          </svg>
+        </div>
+      </header>
+
+      <div
+        className="booking-mode-switch"
+        style={{
+          display: "flex",
+          flexWrap: "wrap",
+          gap: 10,
+          marginBottom: 22,
+        }}
+      >
+        <button
+          type="button"
+          className={
+            mode === "create"
+              ? "admin-button admin-button-primary"
+              : "admin-button admin-button-secondary"
+          }
+          onClick={() => switchMode("create")}
+          disabled={loading || searching}
+        >
+          + Create New Booking
+        </button>
+
+        <button
+          type="button"
+          className={
+            mode === "edit"
+              ? "admin-button admin-button-primary"
+              : "admin-button admin-button-secondary"
+          }
+          onClick={() => switchMode("edit")}
+          disabled={loading || searching}
+        >
+          Edit Existing Booking
+        </button>
       </div>
 
-      {error && (
-        <div className="admin-alert admin-alert-error" role="alert">
-          <span className="alert-icon">!</span>
-          <div>
-            <strong>Booking Error</strong>
-            <p>{error}</p>
-          </div>
+      {message.text && (
+        <div
+          className={`booking-message ${
+            message.type === "success"
+              ? "booking-message-success"
+              : "booking-message-error"
+          }`}
+          role={message.type === "error" ? "alert" : "status"}
+          aria-live="polite"
+          style={{ marginBottom: 22 }}
+        >
+          <span className="booking-message-icon" aria-hidden="true">
+            {message.type === "success" ? "✓" : "!"}
+          </span>
+          <div>{message.text}</div>
         </div>
       )}
 
-      {success && (
-        <div className="admin-alert admin-alert-success" role="status">
-          <span className="alert-icon">✓</span>
-          <div>
-            <strong>{success}</strong>
-            <p>Your shipment has been saved.</p>
-          </div>
-        </div>
-      )}
+      {mode === "edit" && (
+        <section className="booking-section" style={{ marginBottom: 23 }}>
+          <SectionHeader
+            number="🔎"
+            title="Find Existing Shipment"
+            description="Search using the tracking number or AWD number saved in your database."
+          />
 
-      {createdShipment && (
-        <div className="booking-confirmation">
-          <h3>Booking Confirmation</h3>
-
-          <p>
-            <strong>Tracking Number:</strong>{" "}
-            {createdShipment.trackingNumber || "-"}
-          </p>
-
-          <p>
-            <strong>AWD Number:</strong>{" "}
-            {createdShipment.awdNumber || "-"}
-          </p>
-
-          <div className="booking-confirmation-actions">
-            <button
-              type="button"
-              className="primary-admin-button"
-              onClick={downloadLabel}
+          <div className="booking-section-body">
+            <form
+              onSubmit={handleFindShipment}
+              className="booking-field-grid"
             >
-              Download Label
-            </button>
+              <div className="booking-field">
+                <label htmlFor="searchShipmentNumber">
+                  Tracking Number / AWD Number
+                  <span className="booking-required-mark"> *</span>
+                </label>
 
-            <button
-              type="button"
-              className="secondary-admin-button"
-              onClick={printLabel}
-            >
-              Print Label
-            </button>
-          </div>
-        </div>
-      )}
+                <input
+                  id="searchShipmentNumber"
+                  type="text"
+                  value={searchNumber}
+                  onChange={(event) => setSearchNumber(event.target.value)}
+                  placeholder="Example: SPEED750295 or AWD357190"
+                  required
+                />
+              </div>
 
-      <form className="booking-form-card" onSubmit={handleSubmit}>
-        {/* Section 01: Booking Information */}
-        <section className="form-section">
-          <div className="form-section-title">
-            <div className="section-number">01</div>
-            <div>
-              <h3>Booking Information</h3>
-              <p>Select the type of booking.</p>
-            </div>
-          </div>
-
-          <div className="admin-form-grid">
-            <div className="admin-field">
-              <label htmlFor="bookingType">Booking Type</label>
-              <select
-                id="bookingType"
-                name="bookingType"
-                value={formData.bookingType}
-                onChange={handleChange}
-                required
+              <div
+                className="booking-field"
+                style={{ justifyContent: "flex-end" }}
               >
-                <option value="Offline">Offline</option>
-                <option value="Online">Online</option>
-              </select>
-            </div>
+                <label aria-hidden="true">&nbsp;</label>
+                <button
+                  type="submit"
+                  className="booking-submit-btn"
+                  disabled={searching || loading}
+                >
+                  {searching ? "Searching..." : "Find Shipment"}
+                </button>
+              </div>
+            </form>
 
-            {formData.bookingType === "Offline" && (
-              <>
-                <div className="admin-field">
-                  <label htmlFor="trackingNumber">Tracking Number</label>
-                  <input
-                    id="trackingNumber"
-                    type="text"
-                    name="trackingNumber"
-                    value={formData.trackingNumber}
-                    onChange={handleChange}
-                    placeholder="Example: SPEED123456"
-                    required
-                  />
-                </div>
-
-                <div className="admin-field">
-                  <label htmlFor="awdNumber">AWD Number</label>
-                  <input
-                    id="awdNumber"
-                    type="text"
-                    name="awdNumber"
-                    value={formData.awdNumber}
-                    onChange={handleChange}
-                    placeholder="Enter AWD number"
-                    required
-                  />
-                </div>
-              </>
+            {savedShipment && mode === "edit" && (
+              <div
+                style={{
+                  marginTop: 20,
+                  padding: 16,
+                  border: "1px solid #cfe3f7",
+                  borderRadius: 12,
+                  background: "#f5faff",
+                }}
+              >
+                <strong style={{ color: "#0b3d91" }}>
+                  Editing: {editingTrackingNumber}
+                </strong>
+                {editingAwdNumber && (
+                  <div style={{ marginTop: 5, color: "#61758e", fontSize: 13 }}>
+                    AWD Number: {editingAwdNumber}
+                  </div>
+                )}
+              </div>
             )}
           </div>
-
-          {formData.bookingType === "Online" && (
-            <p>
-              Tracking Number and AWD Number will be generated by the backend
-              according to your server configuration.
-            </p>
-          )}
         </section>
+      )}
 
-        {/* Section 02: Sender Information */}
-        <section className="form-section">
-          <div className="form-section-title">
-            <div className="section-number">02</div>
-            <div>
-              <h3>Sender Information</h3>
-              <p>Enter the sender's contact details.</p>
-            </div>
-          </div>
+      <form className="booking-form" onSubmit={handleSubmit}>
+        {/* SECTION 01: BOOKING INFORMATION */}
+        <section className="booking-section">
+          <SectionHeader
+            number="01"
+            title="Booking Information"
+            description="Review the booking type and manage the initial tracking details."
+          />
 
-          <div className="admin-form-grid">
-            <div className="admin-field">
-              <label htmlFor="senderName">Sender Name</label>
-              <input
-                id="senderName"
-                type="text"
-                name="senderName"
-                value={formData.senderName}
+          <div className="booking-section-body">
+            <div className="booking-field-grid">
+              <SelectField
+                label="Booking Type"
+                name="bookingType"
+                value={form.bookingType}
                 onChange={handleChange}
-                placeholder="Enter sender name"
+                required
+                options={[
+                  { value: "Offline", label: "Offline Booking" },
+                  { value: "Online", label: "Online Booking" },
+                ]}
+              />
+
+              <div className="booking-field">
+                <label htmlFor="trackingNumber">
+                  Tracking Number
+                  {mode === "create" && form.bookingType === "Offline" && (
+                    <span className="booking-required-mark"> *</span>
+                  )}
+                </label>
+
+                <input
+                  id="trackingNumber"
+                  name="trackingNumber"
+                  value={
+                    mode === "edit"
+                      ? editingTrackingNumber
+                      : form.trackingNumber
+                  }
+                  onChange={handleChange}
+                  placeholder={
+                    mode === "edit"
+                      ? "Existing tracking number"
+                      : form.bookingType === "Online"
+                        ? "Generated automatically"
+                        : "Enter manual tracking number"
+                  }
+                  readOnly={mode === "edit" || form.bookingType === "Online"}
+                  required={
+                    mode === "create" && form.bookingType === "Offline"
+                  }
+                />
+
+                {mode === "edit" && (
+                  <small>
+                    Tracking number cannot be changed during an edit.
+                  </small>
+                )}
+              </div>
+
+              {mode === "edit" && editingAwdNumber && (
+                <div className="booking-field">
+                  <label htmlFor="awdNumberDisplay">AWD Number</label>
+                  <input
+                    id="awdNumberDisplay"
+                    value={editingAwdNumber}
+                    readOnly
+                  />
+                  <small>AWD number is shown for reference only.</small>
+                </div>
+              )}
+
+              <SelectField
+                label="Shipment Status"
+                name="status"
+                value={form.status}
+                onChange={handleChange}
+                required
+                options={STATUS_OPTIONS}
+              />
+
+              <TextField
+                label="Current Location"
+                name="currentLocation"
+                value={form.currentLocation}
+                onChange={handleChange}
+                placeholder="Enter current office or shipment location"
                 required
               />
-            </div>
 
-            <div className="admin-field">
-              <label htmlFor="senderPhone">Sender Phone</label>
-              <input
-                id="senderPhone"
-                type="tel"
+              <TextAreaField
+                label="Remarks"
+                name="remarks"
+                value={form.remarks}
+                onChange={handleChange}
+                placeholder="Add or update shipment remarks"
+                optional
+              />
+            </div>
+          </div>
+        </section>
+
+        {/* SECTION 02: SENDER DETAILS */}
+        <section className="booking-section">
+          <SectionHeader
+            number="02"
+            title="Sender Details"
+            description="Edit the contact information for the sender."
+          />
+
+          <div className="booking-section-body">
+            <div className="booking-field-grid">
+              <TextField
+                label="Sender Name"
+                name="senderName"
+                value={form.senderName}
+                onChange={handleChange}
+                placeholder="Enter sender full name"
+                required
+              />
+
+              <TextField
+                label="Sender Phone"
                 name="senderPhone"
-                value={formData.senderPhone}
+                value={form.senderPhone}
                 onChange={handleChange}
                 placeholder="Enter sender phone number"
+                type="tel"
                 required
               />
-            </div>
 
-            <div className="admin-field">
-              <label htmlFor="senderAddress">Sender Address</label>
-              <textarea
-                id="senderAddress"
+              <TextAreaField
+                label="Sender Address"
                 name="senderAddress"
-                value={formData.senderAddress}
+                value={form.senderAddress}
                 onChange={handleChange}
                 placeholder="Enter complete sender address"
-                rows="3"
                 required
               />
             </div>
           </div>
         </section>
 
-        {/* Section 03: Receiver Information */}
-        <section className="form-section">
-          <div className="form-section-title">
-            <div className="section-number">03</div>
-            <div>
-              <h3>Receiver Information</h3>
-              <p>Enter the receiver's contact details.</p>
-            </div>
-          </div>
+        {/* SECTION 03: RECEIVER DETAILS */}
+        <section className="booking-section">
+          <SectionHeader
+            number="03"
+            title="Receiver Details"
+            description="Edit the recipient contact information and delivery address."
+          />
 
-          <div className="admin-form-grid">
-            <div className="admin-field">
-              <label htmlFor="receiverName">Receiver Name</label>
-              <input
-                id="receiverName"
-                type="text"
+          <div className="booking-section-body">
+            <div className="booking-field-grid">
+              <TextField
+                label="Receiver Name"
                 name="receiverName"
-                value={formData.receiverName}
+                value={form.receiverName}
                 onChange={handleChange}
-                placeholder="Enter receiver name"
+                placeholder="Enter receiver full name"
                 required
               />
-            </div>
 
-            <div className="admin-field">
-              <label htmlFor="receiverPhone">Receiver Phone</label>
-              <input
-                id="receiverPhone"
-                type="tel"
+              <TextField
+                label="Receiver Phone"
                 name="receiverPhone"
-                value={formData.receiverPhone}
+                value={form.receiverPhone}
                 onChange={handleChange}
                 placeholder="Enter receiver phone number"
+                type="tel"
                 required
               />
-            </div>
 
-            <div className="admin-field">
-              <label htmlFor="receiverAddress">Receiver Address</label>
-              <textarea
-                id="receiverAddress"
+              <TextAreaField
+                label="Receiver Address"
                 name="receiverAddress"
-                value={formData.receiverAddress}
+                value={form.receiverAddress}
                 onChange={handleChange}
-                placeholder="Enter complete receiver address"
-                rows="3"
+                placeholder="Enter complete delivery address"
                 required
               />
             </div>
           </div>
         </section>
 
-        {/* Section 04: Package Information */}
-        <section className="form-section">
-          <div className="form-section-title">
-            <div className="section-number">04</div>
-            <div>
-              <h3>Package Information</h3>
-              <p>Enter the package type and weight, if available.</p>
-            </div>
-          </div>
+        {/* SECTION 04: PACKAGE AND BILLING */}
+        <section className="booking-section">
+          <SectionHeader
+            number="04"
+            title="Package & Billing Details"
+            description="Edit package information and optional billing references."
+          />
 
-          <div className="admin-form-grid">
-            <div className="admin-field">
-              <label htmlFor="packageType">Package Type</label>
-              <select
-                id="packageType"
+          <div className="booking-section-body">
+            <div className="booking-field-grid">
+              <SelectField
+                label="Package Type"
                 name="packageType"
-                value={formData.packageType}
+                value={form.packageType}
                 onChange={handleChange}
                 required
-              >
-                <option value="">Select package type</option>
-                <option value="Document">Document</option>
-                <option value="Parcel">Parcel</option>
-                <option value="Box">Box</option>
-                <option value="Corporate Gift">Corporate Gift</option>
-                <option value="Other">Other</option>
-              </select>
-            </div>
+                options={PACKAGE_TYPES}
+              />
 
-            <div className="admin-field">
-              <label htmlFor="weight">Weight (KG) (Optional)</label>
-              <input
-                id="weight"
-                type="number"
+              <TextField
+                label="Weight (kg)"
                 name="weight"
-                value={formData.weight}
+                value={form.weight}
                 onChange={handleChange}
-                placeholder="Enter weight in KG (optional)"
-                min="0.01"
-                step="0.01"
+                placeholder="Enter weight in kilograms"
+                type="number"
+                min="0.001"
+                step="any"
+                optional
               />
-              <small className="field-help">
-                Weight is optional. Leave blank if it is not available.
-              </small>
-            </div>
-          </div>
-        </section>
 
-        {/* Section 05: Initial Tracking Details */}
-        <section className="form-section">
-          <div className="form-section-title">
-            <div className="section-number">05</div>
-            <div>
-              <h3>Initial Tracking Details</h3>
-              <p>Add the first shipment tracking update.</p>
-            </div>
-          </div>
-
-          <div className="admin-form-grid">
-            <div className="admin-field">
-              <label htmlFor="currentStatus">Shipment Status</label>
-              <select
-                id="currentStatus"
-                name="currentStatus"
-                value={formData.currentStatus}
+              <TextField
+                label="Product Count"
+                name="productCount"
+                value={form.productCount}
                 onChange={handleChange}
-                required
-              >
-                <option value="In Transit">In Transit</option>
-                <option value="Out For Delivery">Out For Delivery</option>
-                <option value="Delivered">Delivered</option>
-              </select>
-            </div>
-
-            <div className="admin-field">
-              <label htmlFor="currentLocation">Current Location</label>
-              <input
-                id="currentLocation"
-                type="text"
-                name="currentLocation"
-                value={formData.currentLocation}
-                onChange={handleChange}
-                placeholder="Example: Pune"
-                required
+                placeholder="Enter product count"
+                type="number"
+                min="1"
+                step="1"
+                optional
               />
-            </div>
 
-            <div className="admin-field">
-              <label htmlFor="currentRemarks">Remarks</label>
-              <input
-                id="currentRemarks"
-                type="text"
-                name="currentRemarks"
-                value={formData.currentRemarks}
+              <TextField
+                label="Invoice Number"
+                name="invoiceNumber"
+                value={form.invoiceNumber}
                 onChange={handleChange}
-                placeholder="Optional remarks"
+                placeholder="Enter invoice number"
+                optional
+              />
+
+              <TextField
+                label="E-Way Bill Number"
+                name="eWayBillNumber"
+                value={form.eWayBillNumber}
+                onChange={handleChange}
+                placeholder="Enter e-way bill number"
+                optional
               />
             </div>
           </div>
         </section>
 
-        {/* Submit */}
+        {/* FORM ACTIONS */}
         <div className="booking-form-footer">
-          <div>
-            <strong>Ready to create shipment?</strong>
+          <div className="booking-footer-note">
+            <span aria-hidden="true">ℹ</span>
             <span>
-              {formData.bookingType === "Online"
-                ? "Tracking Number and AWD Number will be generated automatically."
-                : "The tracking and AWD numbers will use the IDs you entered."}
+              {mode === "edit"
+                ? "Changes are saved to the existing shipment. The tracking number remains unchanged."
+                : "Fields marked * are required. Online bookings receive a tracking number from the backend."}
             </span>
           </div>
 
-          <button
-            type="submit"
-            className="primary-admin-button"
-            disabled={loading}
-          >
-            {loading ? "Creating Booking..." : "Create Booking"}
-          </button>
+          <div className="booking-form-actions">
+            <button
+              type="button"
+              className="booking-reset-btn"
+              onClick={resetForm}
+              disabled={loading || searching}
+            >
+              {mode === "edit" ? "Clear Form" : "Reset Form"}
+            </button>
+
+            <button
+              type="submit"
+              className="booking-submit-btn"
+              disabled={
+                loading ||
+                searching ||
+                (mode === "edit" && !editingTrackingNumber)
+              }
+            >
+              {loading && <span className="booking-spinner" />}
+              {loading
+                ? mode === "edit"
+                  ? "Saving Changes..."
+                  : "Creating Booking..."
+                : mode === "edit"
+                  ? "Save Changes"
+                  : "Create Booking"}
+            </button>
+          </div>
         </div>
       </form>
-    </div>
+    </main>
   );
 }

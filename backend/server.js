@@ -1,3 +1,11 @@
+
+/* =========================================================
+   SPEED EXPRESS API SERVER
+   Express + MongoDB
+========================================================= */
+
+/* ---------------- DNS CONFIGURATION ---------------- */
+
 const dns = require("dns");
 
 dns.setServers([
@@ -5,27 +13,43 @@ dns.setServers([
   "8.8.4.4",
 ]);
 
+/* ---------------- IMPORTS ---------------- */
+
 const express = require("express");
 const cors = require("cors");
 const dotenv = require("dotenv");
 
+dotenv.config();
+
 const connectDB = require("./config/db");
 const shipmentRoutes = require("./routes/shipmentRoutes");
 
-dotenv.config();
-
-connectDB();
+/* ---------------- APP INITIALIZATION ---------------- */
 
 const app = express();
 
+/* ---------------- CORS CONFIGURATION ---------------- */
+
+const allowedOrigins = [
+  "http://localhost:5173",
+  "http://localhost:3000",
+  "https://speedexp.in",
+  "https://www.speedexp.in",
+];
+
 app.use(
   cors({
-    origin: [
-      "http://localhost:5173",
-      "http://localhost:3000",
-      "https://speedexp.in",
-      "https://www.speedexp.in",
-    ],
+    origin: (origin, callback) => {
+      // Permit requests without an Origin header, such as
+      // server-to-server requests and certain API clients.
+      if (!origin || allowedOrigins.includes(origin)) {
+        return callback(null, true);
+      }
+
+      return callback(
+        new Error(`CORS blocked this origin: ${origin}`)
+      );
+    },
     methods: [
       "GET",
       "POST",
@@ -41,6 +65,8 @@ app.use(
   })
 );
 
+/* ---------------- BODY PARSING ---------------- */
+
 app.use(express.json());
 
 app.use(
@@ -49,23 +75,28 @@ app.use(
   })
 );
 
-/* =====================================================
-   ROOT
-===================================================== */
+/* =========================================================
+   ROOT ENDPOINT
+   GET /
+========================================================= */
 
 app.get("/", (req, res) => {
   res.status(200).json({
     success: true,
     message: "Speed Express API is running.",
-    endpoints: {
-      createShipment:
-        "POST /api/shipments",
 
-      getShipments:
-        "GET /api/shipments",
+    endpoints: {
+      root: "GET /",
+      health: "GET /api/health",
+
+      createShipment: "POST /api/shipments",
+      getShipments: "GET /api/shipments",
 
       trackShipment:
         "GET /api/shipments/:trackingNumber",
+
+      updateShipment:
+        "PATCH /api/shipments/:trackingNumber",
 
       updateStatus:
         "PATCH /api/shipments/:trackingNumber/status",
@@ -73,91 +104,98 @@ app.get("/", (req, res) => {
       shippingLabel:
         "GET /api/shipments/:trackingNumber/label",
 
-      testLabelRoute:
-        "GET /api/shipments/test-label-route",
+      deleteShipment:
+        "DELETE /api/shipments/:trackingNumber",
     },
   });
 });
 
-/* =====================================================
+/* =========================================================
    HEALTH CHECK
-===================================================== */
+   GET /api/health
+========================================================= */
 
 app.get("/api/health", (req, res) => {
   res.status(200).json({
     success: true,
     message: "Speed Express API is healthy.",
+    timestamp: new Date().toISOString(),
   });
 });
 
-/* =====================================================
+/* =========================================================
    SHIPMENT ROUTES
-===================================================== */
+   All routes begin with /api/shipments
+========================================================= */
 
-app.use(
-  "/api/shipments",
-  shipmentRoutes
-);
+app.use("/api/shipments", shipmentRoutes);
 
-/* =====================================================
-   404
-===================================================== */
+/* =========================================================
+   404 HANDLER
+========================================================= */
 
 app.use((req, res) => {
   res.status(404).json({
     success: false,
-    message:
-      `Route not found: ${req.method} ${req.originalUrl}`,
+    message: `Route not found: ${req.method} ${req.originalUrl}`,
   });
 });
 
-/* =====================================================
-   ERROR HANDLER
-===================================================== */
+/* =========================================================
+   GLOBAL ERROR HANDLER
+========================================================= */
 
 app.use((err, req, res, next) => {
-  console.error(
-    "SERVER ERROR:",
-    err
-  );
+  console.error("SERVER ERROR:", err);
 
   if (res.headersSent) {
     return next(err);
   }
 
-  res.status(500).json({
+  // CORS errors are reported separately from internal errors.
+  if (err.message && err.message.startsWith("CORS blocked")) {
+    return res.status(403).json({
+      success: false,
+      message: "This origin is not permitted by CORS.",
+    });
+  }
+
+  return res.status(500).json({
     success: false,
-    message:
-      "Internal server error.",
+    message: "Internal server error.",
     error:
-      err.message,
+      process.env.NODE_ENV === "production"
+        ? undefined
+        : err.message,
   });
 });
 
-/* =====================================================
+/* =========================================================
    START SERVER
-===================================================== */
+========================================================= */
 
-const PORT =
-  process.env.PORT || 5000;
+const PORT = process.env.PORT || 5000;
 
-app.listen(
-  PORT,
-  () => {
-    console.log(
-      "=============================================="
-    );
+const startServer = async () => {
+  try {
+    // Connect to MongoDB before accepting requests.
+    await connectDB();
 
-    console.log(
-      `Speed Express API running on port ${PORT}`
-    );
-
-    console.log(
-      `http://localhost:${PORT}`
-    );
-
-    console.log(
-      "=============================================="
-    );
+    app.listen(PORT, () => {
+      console.log("==============================================");
+      console.log("       SPEED EXPRESS API SERVER");
+      console.log("==============================================");
+      console.log(`API running on port ${PORT}`);
+      console.log(`Local URL: http://localhost:${PORT}`);
+      console.log(`Health: http://localhost:${PORT}/api/health`);
+      console.log("==============================================");
+    });
+  } catch (error) {
+    console.error("Failed to start Speed Express API:", error);
+    process.exit(1);
   }
-);
+};
+
+startServer();
+
+module.exports = app;

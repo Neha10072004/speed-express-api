@@ -1,85 +1,81 @@
 
 const express = require("express");
-
-const {
-  createShipment,
-  getAllShipments,
-  getShipment,
-  updateShipmentStatus,
-} = require("../controllers/shipmentController");
-
-const Shipment = require("../models/Shipment");
-const generateShippingLabel = require("../utils/generateShippingLabel");
-
 const router = express.Router();
 
-console.log("SHIPMENT ROUTES LOADED:", __filename);
+const shipmentController = require("../controllers/shipmentController");
 
-// TEST ROUTE — keep before /:trackingNumber
-router.get("/test-label-route", (req, res) => {
-  console.log("TEST LABEL ROUTE CALLED");
+/* =========================================================
+   SPEED EXPRESS - SHIPMENT ROUTES
+========================================================= */
 
+/*
+  IMPORTANT:
+  The controller must export every function used below.
+*/
+
+/* ---------------------------------------------------------
+   1. CREATE NEW BOOKING
+   POST /api/shipments
+--------------------------------------------------------- */
+router.post("/", shipmentController.createShipment);
+
+/* ---------------------------------------------------------
+   2. GET ALL BOOKINGS / ORDERS
+   GET /api/shipments
+--------------------------------------------------------- */
+router.get("/", shipmentController.getAllShipments);
+
+/* ---------------------------------------------------------
+   3. UPDATE SHIPMENT STATUS
+   PATCH /api/shipments/:trackingNumber/status
+--------------------------------------------------------- */
+router.patch(
+  "/:trackingNumber/status",
+  shipmentController.updateShipmentStatus
+);
+
+/* ---------------------------------------------------------
+   4. DOWNLOAD SHIPPING LABEL
+   GET /api/shipments/:trackingNumber/label
+--------------------------------------------------------- */
+router.get(
+  "/:trackingNumber/label",
+  shipmentController.getShippingLabel
+);
+
+/* ---------------------------------------------------------
+   5. EDIT EXISTING BOOKING
+   PATCH /api/shipments/:trackingNumber
+--------------------------------------------------------- */
+router.patch(
+  "/:trackingNumber",
+  shipmentController.updateShipment
+);
+
+/* ---------------------------------------------------------
+   6. DELETE BOOKING
+   DELETE /api/shipments/:trackingNumber
+--------------------------------------------------------- */
+// DELETE SHIPMENT
+router.delete("/delete-test", (req, res) => {
   return res.status(200).json({
     success: true,
-    message: "Shipping label route is loaded correctly.",
+    message: "DELETE route is registered and responding.",
   });
 });
+/* ---------------------------------------------------------
+   7. GET SINGLE SHIPMENT
+   GET /api/shipments/:trackingNumber
 
-// CREATE SHIPMENT
-router.post("/", createShipment);
+   Supports searching by tracking number or AWD number
+   if the controller checks both fields.
+--------------------------------------------------------- */
+router.get(
+  "/:trackingNumber",
+  shipmentController.getShipmentByTrackingNumber
+);
 
-// GET ALL SHIPMENTS
-router.get("/", getAllShipments);
-
-// UPDATE SHIPMENT STATUS
-router.patch("/:trackingNumber/status", updateShipmentStatus);
-
-// DOWNLOAD SHIPPING LABEL
-router.get("/:trackingNumber/label", async (req, res, next) => {
-  try {
-    const trackingNumber = String(req.params.trackingNumber || "")
-      .trim()
-      .toUpperCase();
-
-    if (!trackingNumber) {
-      return res.status(400).json({
-        success: false,
-        message: "Tracking Number is required.",
-      });
-    }
-
-    const shipment = await Shipment.findOne({ trackingNumber });
-
-    if (!shipment) {
-      return res.status(404).json({
-        success: false,
-        message: `Shipment not found: ${trackingNumber}`,
-      });
-    }
-
-    res.setHeader("Content-Type", "application/pdf");
-    res.setHeader(
-      "Content-Disposition",
-      `attachment; filename="SpeedExpress-${trackingNumber}.pdf"`
-    );
-
-    await generateShippingLabel(shipment, res);
-  } catch (error) {
-    console.error("SHIPPING LABEL ERROR:", error);
-
-    if (res.headersSent) {
-      return next(error);
-    }
-
-    return res.status(500).json({
-      success: false,
-      message: "Failed to generate shipping label.",
-      error: error.message,
-    });
-  }
-});
-
-// GET ONE SHIPMENT — keep after the specific routes above
-router.get("/:trackingNumber", getShipment);
-
+/* =========================================================
+   EXPORT ROUTER
+========================================================= */
 module.exports = router;

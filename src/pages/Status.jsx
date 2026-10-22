@@ -1,57 +1,348 @@
-import React, { useState } from "react";
+import React, { useRef, useState } from "react";
 import { updateShipmentStatus } from "../services/api";
-import "./AdminPages.css";
 
-const initialForm = {
+
+// Get the current date and time in India Standard Time.
+const getIndiaDateTimeLocal = () => {
+  const parts = new Intl.DateTimeFormat("en-CA", {
+    timeZone: "Asia/Kolkata",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+    hourCycle: "h23",
+  }).formatToParts(new Date());
+
+  const values = Object.fromEntries(
+    parts.map(({ type, value }) => [type, value])
+  );
+
+  return `${values.year}-${values.month}-${values.day}T${values.hour}:${values.minute}`;
+};
+
+// Format a datetime-local value as a date/time in India.
+// datetime-local has no timezone, so we explicitly interpret it as IST.
+const formatIndiaDateTime = (value) => {
+  if (!value) return null;
+
+  const date = new Date(`${value}:00+05:30`);
+
+  if (Number.isNaN(date.getTime())) return null;
+
+  return {
+    date: new Intl.DateTimeFormat("en-IN", {
+      timeZone: "Asia/Kolkata",
+      day: "2-digit",
+      month: "short",
+      year: "numeric",
+    }).format(date),
+    time: new Intl.DateTimeFormat("en-IN", {
+      timeZone: "Asia/Kolkata",
+      hour: "2-digit",
+      minute: "2-digit",
+      hour12: true,
+    }).format(date),
+  };
+};
+
+const MAX_FILE_SIZE = 10 * 1024 * 1024;
+
+const ACCEPTED_EXTENSIONS = [
+  ".jpg",
+  ".jpeg",
+  ".png",
+  ".webp",
+  ".pdf",
+  ".doc",
+  ".docx",
+];
+
+const STATUS_OPTIONS = [
+  {
+    value: "Shipment Booked",
+    description: "Shipment booking has been recorded.",
+  },
+  {
+    value: "Material Received at Origin Office",
+    description: "The parcel has arrived at the origin office.",
+  },
+  {
+    value: "In Transit to Next Hub",
+    description: "Shipment is moving to the next courier hub.",
+  },
+  {
+    value: "Vehicle Delayed",
+    description: "The shipment vehicle has been delayed.",
+  },
+  {
+    value: "Out For Delivery",
+    description: "Shipment is with the delivery team.",
+  },
+  {
+    value: "Delivered Successfully",
+    description: "The shipment has reached its destination.",
+  },
+  {
+    value: "Shipment Cancelled",
+    description: "The shipment has been cancelled.",
+  },
+  {
+    value: "Delivery Attempted - Customer Unavailable",
+    description:
+      "Delivery was attempted, but the customer was unavailable.",
+  },
+  {
+    value: "Vehicle Breakdown Delay",
+    description: "A vehicle breakdown has delayed the shipment.",
+  },
+  {
+    value: "Shipment Forwarded for Next Connection",
+    description: "Shipment has been forwarded for its next connection.",
+  },
+];
+
+const INITIAL_FORM = {
   trackingNumber: "",
-  status: "In Transit",
+  status: "Shipment Booked",
   location: "",
   remarks: "",
 };
 
-const statusOptions = [
+const PROGRESS_STEPS = [
   {
-    value: "In Transit",
-    description: "Shipment is moving to its destination",
+    number: "01",
+    title: "Booking & Collection",
+    description:
+      "Shipment is booked and received at the origin office.",
   },
   {
-    value: "Out For Delivery",
-    description: "Shipment is with the delivery team",
+    number: "02",
+    title: "Transit & Hub Movement",
+    description:
+      "Shipment moves between courier hubs and transport connections.",
   },
   {
-    value: "Delivered",
-    description: "Shipment has reached the receiver",
+    number: "03",
+    title: "Out for Delivery",
+    description:
+      "The local delivery team is handling the shipment.",
+  },
+  {
+    number: "04",
+    title: "Delivered Successfully",
+    description:
+      "The shipment has reached its intended destination.",
   },
 ];
 
-export default function Status() {
-  const [formData, setFormData] = useState(initialForm);
+function getErrorMessage(error) {
+  return (
+    error?.response?.data?.message ||
+    error?.message ||
+    "Unable to update shipment status. Please try again."
+  );
+}
+
+function formatStatus(status = "") {
+  return status.replace(/-/g, " ").replace(/\s+/g, " ").trim();
+}
+
+function getFileExtension(filename = "") {
+  return filename.split(".").pop()?.toLowerCase() || "";
+}
+
+function getStatusTone(status = "") {
+  const value = status.toLowerCase();
+
+  if (
+    value.includes("delivered successfully") ||
+    value === "delivered"
+  ) {
+    return "success";
+  }
+
+  if (
+    value.includes("cancelled") ||
+    value.includes("breakdown") ||
+    value.includes("delayed")
+  ) {
+    return "warning";
+  }
+
+  if (
+    value.includes("out for delivery") ||
+    value.includes("delivery attempted")
+  ) {
+    return "delivery";
+  }
+
+  return "transit";
+}
+
+function PackageIcon() {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" aria-hidden="true">
+      <path
+        d="m12 3 9 4.5v9L12 21l-9-4.5v-9L12 3Z"
+        stroke="currentColor"
+        strokeWidth="1.7"
+        strokeLinejoin="round"
+      />
+      <path
+        d="m3.5 7.7 8.5 4.5 8.5-4.5M12 12.2V21"
+        stroke="currentColor"
+        strokeWidth="1.7"
+        strokeLinejoin="round"
+      />
+    </svg>
+  );
+}
+
+function UploadIcon() {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" aria-hidden="true">
+      <path
+        d="M12 16V4m0 0L7.5 8.5M12 4l4.5 4.5"
+        stroke="currentColor"
+        strokeWidth="1.8"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+      <path
+        d="M5 14v4.5A1.5 1.5 0 0 0 6.5 20h11a1.5 1.5 0 0 0 1.5-1.5V14"
+        stroke="currentColor"
+        strokeWidth="1.8"
+        strokeLinecap="round"
+      />
+    </svg>
+  );
+}
+
+function CheckIcon() {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" aria-hidden="true">
+      <path
+        d="m5 12 4.5 4.5L19 7"
+        stroke="currentColor"
+        strokeWidth="2"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+    </svg>
+  );
+}
+
+function CalendarIcon() {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" aria-hidden="true">
+      <rect
+        x="3"
+        y="5"
+        width="18"
+        height="16"
+        rx="2"
+        stroke="currentColor"
+        strokeWidth="1.7"
+      />
+      <path
+        d="M16 3v4M8 3v4M3 10h18"
+        stroke="currentColor"
+        strokeWidth="1.7"
+        strokeLinecap="round"
+      />
+    </svg>
+  );
+}
+
+function Status() {
+  const fileInputRef = useRef(null);
+
+  const [form, setForm] = useState(INITIAL_FORM);
+  const [proofFile, setProofFile] = useState(null);
+  const [eventDateTime, setEventDateTime] = useState(
+    getIndiaDateTimeLocal
+  );
   const [loading, setLoading] = useState(false);
-  const [message, setMessage] = useState("");
+  const [success, setSuccess] = useState("");
   const [error, setError] = useState("");
   const [updatedShipment, setUpdatedShipment] = useState(null);
 
-  const handleChange = (e) => {
-    const { name, value } = e.target;
+  const selectedStatus = STATUS_OPTIONS.find(
+    (item) => item.value === form.status
+  );
 
-    setFormData((prev) => ({
-      ...prev,
+  const handleChange = (event) => {
+    const { name, value } = event.target;
+
+    setForm((previous) => ({
+      ...previous,
       [name]: value,
     }));
 
-    setMessage("");
+    setSuccess("");
     setError("");
   };
 
-  const handleSubmit = async (e) => {
-    e.preventDefault();
-
-    setMessage("");
+  const handleDateTimeChange = (event) => {
+    setEventDateTime(event.target.value);
+    setSuccess("");
     setError("");
-    setUpdatedShipment(null);
+  };
 
-    const trackingNumber = formData.trackingNumber.trim();
-    const location = formData.location.trim();
+  const handleFileChange = (event) => {
+    const file = event.target.files?.[0] || null;
+
+    setSuccess("");
+    setError("");
+
+    if (!file) {
+      setProofFile(null);
+      return;
+    }
+
+    const extension = `.${getFileExtension(file.name)}`;
+
+    if (!ACCEPTED_EXTENSIONS.includes(extension)) {
+      setError(
+        "Unsupported file type. Upload JPG, JPEG, PNG, WEBP, PDF, DOC or DOCX."
+      );
+
+      event.target.value = "";
+      setProofFile(null);
+      return;
+    }
+
+    if (file.size > MAX_FILE_SIZE) {
+      setError("The attachment must not exceed 10 MB.");
+
+      event.target.value = "";
+      setProofFile(null);
+      return;
+    }
+
+    setProofFile(file);
+  };
+
+  const removeProofFile = () => {
+    setProofFile(null);
+
+    if (fileInputRef.current) {
+      fileInputRef.current.value = "";
+    }
+
+    setSuccess("");
+    setError("");
+  };
+
+  const handleSubmit = async (event) => {
+    event.preventDefault();
+
+    setSuccess("");
+    setError("");
+
+    const trackingNumber = form.trackingNumber.trim();
+    const location = form.location.trim();
 
     if (!trackingNumber) {
       setError("Please enter a Tracking Number or AWD Number.");
@@ -63,371 +354,545 @@ export default function Status() {
       return;
     }
 
+    if (!form.status) {
+      setError("Please select a shipment status.");
+      return;
+    }
+
+    if (!eventDateTime) {
+      setError("Please select the shipment event date and time.");
+      return;
+    }
+
+    const selectedDate = new Date(`${eventDateTime}:00+05:30`);
+
+    if (Number.isNaN(selectedDate.getTime())) {
+      setError("Please enter a valid shipment event date and time.");
+      return;
+    }
+
     try {
       setLoading(true);
 
-      const data = await updateShipmentStatus(trackingNumber, {
-        status: formData.status,
+      // The API service must append eventDateTime to FormData.
+      // The backend must save this timestamp in shipment history.
+      const response = await updateShipmentStatus(trackingNumber, {
+        status: form.status,
         location,
-        remarks: formData.remarks.trim(),
+        remarks: form.remarks.trim(),
+        eventDateTime,
+        ...(proofFile ? { proofFile } : {}),
       });
 
-      const shipment = data.shipment;
+      const shipment = response?.shipment || null;
+      const formattedDateTime = formatIndiaDateTime(eventDateTime);
 
-      setMessage(data.message || "Shipment status updated successfully.");
-      setUpdatedShipment(shipment || null);
+      setUpdatedShipment({
+        ...(shipment || {}),
+        trackingNumber:
+          shipment?.trackingNumber || trackingNumber,
+        awdNumber: shipment?.awdNumber || "",
+        currentStatus:
+          shipment?.currentStatus || form.status,
+        currentLocation:
+          shipment?.currentLocation || location,
+        currentDate:
+          formattedDateTime?.date || "",
+        currentTime:
+          formattedDateTime?.time || "",
+        eventDateTime,
+      });
 
-      // Keep the tracking number so another update is easier.
-      setFormData((prev) => ({
-        ...prev,
+      setSuccess(
+        response?.message ||
+          "Shipment status updated successfully."
+      );
+
+      // Preserve the tracking number for the next update.
+      setForm((previous) => ({
+        ...previous,
         trackingNumber,
+        status: shipment?.currentStatus || previous.status,
         location: shipment?.currentLocation || location,
         remarks: "",
-        status: shipment?.currentStatus || prev.status,
       }));
-    } catch (err) {
-      setError(err.message || "Unable to update shipment status.");
+
+      setProofFile(null);
+
+      if (fileInputRef.current) {
+        fileInputRef.current.value = "";
+      }
+    } catch (requestError) {
+      setError(getErrorMessage(requestError));
     } finally {
       setLoading(false);
     }
   };
 
+  const handleReset = () => {
+    if (loading) return;
+
+    setForm({ ...INITIAL_FORM });
+    setEventDateTime(getIndiaDateTimeLocal());
+    setProofFile(null);
+    setSuccess("");
+    setError("");
+    setUpdatedShipment(null);
+
+    if (fileInputRef.current) {
+      fileInputRef.current.value = "";
+    }
+  };
+
   return (
-    <div className="admin-page status-page">
-      {/* PAGE HEADER */}
-      <div className="admin-page-header status-page-header">
-        <div>
-          <div className="admin-page-kicker">
-            SHIPMENT MANAGEMENT
+    <main className="status-page">
+      <header className="status-page-header">
+        <div className="status-page-heading">
+          <div className="status-eyebrow">
+            <span className="status-eyebrow-line" />
+            SPEED EXPRESS / OPERATIONS
           </div>
 
-          <h2>Update Shipment Status</h2>
+          <h1>Update Shipment Status</h1>
 
           <p>
-            Track shipment progress by updating its status,
-            current location, and remarks.
+            Manage shipment movement, update delivery progress,
+            and attach supporting documents.
           </p>
         </div>
 
-        <div className="status-header-badge">
-          <span className="status-header-dot" />
-          Shipment Updates
+        <div className="status-header-indicator">
+          <span className="status-live-dot" />
+          <span>Shipment Management</span>
         </div>
-      </div>
+      </header>
 
       <div className="status-layout">
-        {/* FORM CARD */}
-        <div className="status-form-card">
-          <div className="status-card-heading">
+        {/* LEFT: UPDATE FORM */}
+        <section className="status-form-card">
+          <div className="status-form-heading">
             <div className="status-heading-icon">
-              <svg
-                viewBox="0 0 24 24"
-                fill="none"
-                aria-hidden="true"
-              >
-                <path
-                  d="M3 7.5 12 3l9 4.5v9L12 21l-9-4.5v-9Z"
-                  stroke="currentColor"
-                  strokeWidth="1.7"
-                  strokeLinejoin="round"
-                />
-                <path
-                  d="m3.5 7.7 8.5 4.5 8.5-4.5M12 12.2V21"
-                  stroke="currentColor"
-                  strokeWidth="1.7"
-                  strokeLinejoin="round"
-                />
-              </svg>
+              <PackageIcon />
             </div>
 
             <div>
-              <h3>Shipment Information</h3>
-              <p>Enter the details for this tracking update.</p>
+              <h2>Shipment Information</h2>
+              <p>
+                Enter the shipment details and save the latest update.
+              </p>
             </div>
           </div>
 
-          <form onSubmit={handleSubmit}>
+          {error && (
+            <div
+              className="status-message status-message-error"
+              role="alert"
+            >
+              <span className="status-message-symbol">!</span>
+              <div>
+                <strong>Update unsuccessful</strong>
+                <p>{error}</p>
+              </div>
+            </div>
+          )}
+
+          {success && (
+            <div
+              className="status-message status-message-success"
+              role="status"
+              aria-live="polite"
+            >
+              <span className="status-message-symbol">
+                <CheckIcon />
+              </span>
+              <div>
+                <strong>Shipment updated successfully</strong>
+                <p>{success}</p>
+              </div>
+            </div>
+          )}
+
+          <form onSubmit={handleSubmit} noValidate>
             {/* TRACKING NUMBER */}
             <div className="status-field">
-              <label htmlFor="trackingNumber">
-                Tracking Number / AWD Number
-                <span className="required-star">*</span>
+              <label htmlFor="statusTrackingNumber">
+                Tracking / AWD Number
+                <span className="status-required">*</span>
               </label>
 
-              <div className="status-input-wrap">
-                <svg
-                  viewBox="0 0 24 24"
-                  fill="none"
-                  aria-hidden="true"
-                >
-                  <circle
-                    cx="10.8"
-                    cy="10.8"
-                    r="6.8"
-                    stroke="currentColor"
-                    strokeWidth="1.7"
-                  />
-                  <path
-                    d="m16 16 4.2 4.2"
-                    stroke="currentColor"
-                    strokeWidth="1.7"
-                    strokeLinecap="round"
-                  />
-                </svg>
+              <div className="status-input-shell">
+                <span className="status-input-icon">
+                  <PackageIcon />
+                </span>
 
                 <input
-                  id="trackingNumber"
+                  id="statusTrackingNumber"
                   type="text"
                   name="trackingNumber"
-                  value={formData.trackingNumber}
+                  value={form.trackingNumber}
                   onChange={handleChange}
-                  placeholder="e.g. SPEED123456 or AWD123456"
+                  placeholder="Enter tracking or AWD number"
                   autoComplete="off"
                   required
+                  disabled={loading}
                 />
               </div>
 
               <small>
-                Enter the tracking number generated during booking.
+                Use the tracking number or AWD number assigned to
+                the shipment.
               </small>
             </div>
 
-            {/* STATUS */}
+            {/* SHIPMENT STATUS */}
             <div className="status-field">
-              <label htmlFor="shipmentStatus">
+              <label htmlFor="statusSelect">
                 Shipment Status
-                <span className="required-star">*</span>
+                <span className="status-required">*</span>
               </label>
 
               <select
-                id="shipmentStatus"
+                id="statusSelect"
                 name="status"
-                value={formData.status}
+                value={form.status}
                 onChange={handleChange}
                 required
+                disabled={loading}
               >
-                {statusOptions.map((option) => (
-                  <option key={option.value} value={option.value}>
-                    {option.value}
+                {STATUS_OPTIONS.map((item) => (
+                  <option key={item.value} value={item.value}>
+                    {item.value}
                   </option>
                 ))}
               </select>
 
-              <div className="status-selected-info">
-                <span
-                  className={`status-indicator ${
-                    formData.status === "Delivered"
-                      ? "status-indicator-delivered"
-                      : formData.status === "Out For Delivery"
-                      ? "status-indicator-out"
-                      : "status-indicator-transit"
-                  }`}
-                />
-
-                <span>
-                  {
-                    statusOptions.find(
-                      (option) => option.value === formData.status
-                    )?.description
-                  }
-                </span>
-              </div>
+              {selectedStatus && (
+                <div className="status-selection-hint">
+                  <span
+                    className={`status-indicator status-indicator-${getStatusTone(
+                      form.status
+                    )}`}
+                  />
+                  <span>{selectedStatus.description}</span>
+                </div>
+              )}
             </div>
 
             {/* LOCATION */}
             <div className="status-field">
-              <label htmlFor="currentLocation">
-                Current Location
-                <span className="required-star">*</span>
+              <label htmlFor="statusLocation">
+                Current Shipment Location
+                <span className="status-required">*</span>
               </label>
 
-              <div className="status-input-wrap">
-                <svg
-                  viewBox="0 0 24 24"
-                  fill="none"
-                  aria-hidden="true"
-                >
-                  <path
-                    d="M20 10c0 5-8 11-8 11S4 15 4 10a8 8 0 1 1 16 0Z"
-                    stroke="currentColor"
-                    strokeWidth="1.7"
-                    strokeLinejoin="round"
-                  />
-                  <circle
-                    cx="12"
-                    cy="10"
-                    r="2.5"
-                    stroke="currentColor"
-                    strokeWidth="1.7"
-                  />
-                </svg>
+              <input
+                id="statusLocation"
+                type="text"
+                name="location"
+                value={form.location}
+                onChange={handleChange}
+                placeholder="e.g. Pune Hub, Mumbai Office"
+                required
+                disabled={loading}
+              />
+            </div>
+
+            {/* EDITABLE DATE AND TIME */}
+            <div className="status-field">
+              <label htmlFor="eventDateTime">
+                Shipment Event Date &amp; Time
+                <span className="status-required">*</span>
+              </label>
+
+              <div className="status-input-shell status-datetime-shell">
+                <span className="status-input-icon">
+                  <CalendarIcon />
+                </span>
 
                 <input
-                  id="currentLocation"
-                  type="text"
-                  name="location"
-                  value={formData.location}
-                  onChange={handleChange}
-                  placeholder="Enter city or delivery location"
+                  id="eventDateTime"
+                  type="datetime-local"
+                  name="eventDateTime"
+                  value={eventDateTime}
+                  onChange={handleDateTimeChange}
                   required
+                  disabled={loading}
                 />
               </div>
+
+              <small>
+                Defaults to the current India time. You can change
+                both the date and time to match the actual shipment event.
+              </small>
             </div>
 
             {/* REMARKS */}
             <div className="status-field">
-              <label htmlFor="shipmentRemarks">
+              <label htmlFor="statusRemarks">
                 Remarks
-                <span className="optional-label">Optional</span>
+                <span className="status-optional">OPTIONAL</span>
               </label>
 
               <textarea
-                id="shipmentRemarks"
+                id="statusRemarks"
                 name="remarks"
-                value={formData.remarks}
+                value={form.remarks}
                 onChange={handleChange}
-                placeholder="Add an update for this shipment..."
-                rows={4}
+                placeholder="Add additional shipment information..."
+                rows={3}
+                disabled={loading}
               />
+
+              <small>
+                Include useful details about shipment movement or
+                delivery attempts.
+              </small>
             </div>
 
-            {/* ERROR */}
-            {error && (
-              <div className="status-message status-message-error" role="alert">
-                <span className="status-message-icon">!</span>
-                <div>
-                  <strong>Update failed</strong>
-                  <p>{error}</p>
-                </div>
-              </div>
-            )}
+            {/* OPTIONAL PROOF ATTACHMENT */}
+            <div className="status-field">
+              <label htmlFor="statusProofFile">
+                Supporting Documents
+                <span className="status-optional">OPTIONAL</span>
+              </label>
 
-            {/* SUCCESS */}
-            {message && (
               <div
-                className="status-message status-message-success"
-                role="status"
+                className={`status-upload-area ${
+                  proofFile ? "has-file" : ""
+                }`}
               >
-                <span className="status-message-icon">✓</span>
-                <div>
-                  <strong>Update successful</strong>
-                  <p>{message}</p>
+                <input
+                  ref={fileInputRef}
+                  id="statusProofFile"
+                  className="status-native-file-input"
+                  type="file"
+                  accept=".jpg,.jpeg,.png,.webp,.pdf,.doc,.docx"
+                  onChange={handleFileChange}
+                  disabled={loading}
+                />
+
+                <label
+                  className="status-upload-label"
+                  htmlFor="statusProofFile"
+                >
+                  <span className="status-upload-icon">
+                    <UploadIcon />
+                  </span>
+
+                  <span className="status-upload-copy">
+                    <strong>
+                      {proofFile
+                        ? "Replace selected attachment"
+                        : "Choose a file to attach"}
+                    </strong>
+                    <span>
+                      or click to browse from your device
+                    </span>
+                  </span>
+
+                  <span className="status-browse-button">
+                    Browse
+                  </span>
+                </label>
+
+                <div className="status-upload-meta">
+                  <span>JPG, PNG, WEBP, PDF, DOC, DOCX</span>
+                  <span>Maximum 10 MB</span>
                 </div>
               </div>
-            )}
 
-            {/* ACTIONS */}
+              {proofFile && (
+                <div className="status-selected-file">
+                  <span className="status-file-type">
+                    {getFileExtension(proofFile.name).toUpperCase()}
+                  </span>
+
+                  <div className="status-file-information">
+                    <strong title={proofFile.name}>
+                      {proofFile.name}
+                    </strong>
+                    <span>
+                      {(proofFile.size / (1024 * 1024)).toFixed(2)} MB
+                    </span>
+                  </div>
+
+                  <button
+                    type="button"
+                    className="status-remove-file"
+                    onClick={removeProofFile}
+                    disabled={loading}
+                    aria-label="Remove selected attachment"
+                  >
+                    Remove
+                  </button>
+                </div>
+              )}
+            </div>
+
+            {/* FORM ACTIONS */}
             <div className="status-form-footer">
               <p>
-                <span className="required-star">*</span>
+                <span className="status-required">*</span>
                 Required fields
               </p>
 
-              <button
-                type="submit"
-                className="status-submit-button"
-                disabled={loading}
-              >
-                {loading ? (
-                  <>
-                    <span className="status-spinner" />
-                    Updating...
-                  </>
-                ) : (
-                  <>
-                    Update Shipment
-                    <span aria-hidden="true">→</span>
-                  </>
-                )}
-              </button>
+              <div className="status-form-actions">
+                <button
+                  type="button"
+                  className="status-reset-button"
+                  onClick={handleReset}
+                  disabled={loading}
+                >
+                  Reset
+                </button>
+
+                <button
+                  type="submit"
+                  className="status-submit-button"
+                  disabled={loading}
+                >
+                  {loading ? (
+                    <>
+                      <span className="status-spinner" />
+                      Updating...
+                    </>
+                  ) : (
+                    <>
+                      <CheckIcon />
+                      Update Status
+                    </>
+                  )}
+                </button>
+              </div>
             </div>
           </form>
-        </div>
+        </section>
 
-        {/* INFORMATION CARD */}
-        <aside className="status-side-card">
-          <div className="status-side-top">
-            <div className="status-side-icon">↗</div>
-            <h3>Shipment Progress</h3>
-            <p>
-              Keep your customers informed with accurate shipment
-              tracking updates.
+        {/* RIGHT: SHIPMENT PROGRESS */}
+        <aside className="status-sidebar">
+          <section className="status-progress-card">
+            <div className="status-sidebar-heading">
+              <div>
+                <span className="status-sidebar-eyebrow">
+                  TRACKING OVERVIEW
+                </span>
+                <h2>Shipment Progress</h2>
+              </div>
+
+              <span className="status-sidebar-package-icon">
+                <PackageIcon />
+              </span>
+            </div>
+
+            <p className="status-sidebar-description">
+              Use these stages as a guide when selecting the
+              appropriate shipment status.
             </p>
-          </div>
 
-          <div className="status-progress-list">
-            <div className="status-progress-item">
-              <div className="status-progress-marker">
-                <span>1</span>
-              </div>
-              <div>
-                <strong>In Transit</strong>
-                <p>Shipment is moving through the network.</p>
-              </div>
+            <div className="status-progress-list">
+              {PROGRESS_STEPS.map((step, index) => (
+                <div
+                  className="status-progress-item"
+                  key={step.number}
+                >
+                  <div className="status-progress-rail">
+                    <span className="status-progress-number">
+                      {step.number}
+                    </span>
+
+                    {index < PROGRESS_STEPS.length - 1 && (
+                      <span className="status-progress-connector" />
+                    )}
+                  </div>
+
+                  <div className="status-progress-copy">
+                    <h3>{step.title}</h3>
+                    <p>{step.description}</p>
+                  </div>
+                </div>
+              ))}
             </div>
 
-            <div className="status-progress-item">
-              <div className="status-progress-marker">
-                <span>2</span>
-              </div>
-              <div>
-                <strong>Out For Delivery</strong>
-                <p>Shipment is with the delivery team.</p>
-              </div>
+            <div className="status-sidebar-note">
+              <span className="status-note-icon">i</span>
+              <p>
+                Record the actual shipment event date and time.
+                Delays, cancellations, and unsuccessful delivery
+                attempts should reflect the actual shipment condition.
+              </p>
             </div>
+          </section>
 
-            <div className="status-progress-item">
-              <div className="status-progress-marker">
-                <span>3</span>
-              </div>
-              <div>
-                <strong>Delivered</strong>
-                <p>Shipment has reached its destination.</p>
-              </div>
-            </div>
-          </div>
-
-          <div className="status-side-note">
-            <span>i</span>
-            <p>
-              Every successful update is saved in the shipment's
-              tracking history.
-            </p>
-          </div>
-
+          {/* LAST SUCCESSFUL UPDATE */}
           {updatedShipment && (
-            <div className="status-last-update">
-              <span className="status-last-update-label">
-                LAST UPDATED SHIPMENT
-              </span>
+            <section className="status-latest-card">
+              <div className="status-latest-heading">
+                <span className="status-latest-check">
+                  <CheckIcon />
+                </span>
 
-              <strong>
-                {updatedShipment.trackingNumber}
-              </strong>
+                <div>
+                  <span className="status-sidebar-eyebrow">
+                    LAST SUBMITTED EVENT
+                  </span>
+                  <h2>Update Saved</h2>
+                </div>
+              </div>
 
-              <span>
-                AWD: {updatedShipment.awdNumber}
-              </span>
+              <div className="status-latest-number">
+                <span>TRACKING NUMBER</span>
+                <strong>{updatedShipment.trackingNumber}</strong>
+              </div>
 
-              <span>
-                Status: {updatedShipment.currentStatus}
-              </span>
+              {updatedShipment.awdNumber && (
+                <div className="status-latest-row">
+                  <span>AWD Number</span>
+                  <strong>{updatedShipment.awdNumber}</strong>
+                </div>
+              )}
 
-              <span>
-                Location: {updatedShipment.currentLocation}
-              </span>
+              <div className="status-latest-row">
+                <span>Current Status</span>
+                <strong
+                  className={`status-latest-badge status-tone-${getStatusTone(
+                    updatedShipment.currentStatus
+                  )}`}
+                >
+                  {formatStatus(updatedShipment.currentStatus)}
+                </strong>
+              </div>
 
-              <span>
-                Date: {updatedShipment.currentDate}
-              </span>
+              <div className="status-latest-row">
+                <span>Location</span>
+                <strong>
+                  {updatedShipment.currentLocation || "—"}
+                </strong>
+              </div>
 
-              <span>
-                Time: {updatedShipment.currentTime}
-              </span>
-            </div>
+              <div className="status-latest-row">
+                <span>Event Date</span>
+                <strong>{updatedShipment.currentDate || "—"}</strong>
+              </div>
+
+              <div className="status-latest-row">
+                <span>Event Time (IST)</span>
+                <strong>{updatedShipment.currentTime || "—"}</strong>
+              </div>
+            </section>
           )}
+
+          <div className="status-security-note">
+            <span className="status-security-icon">✓</span>
+            <p>
+              <strong>Operational accuracy matters.</strong>{" "}
+              Verify the tracking number, actual location, status,
+              and event date/time before saving.
+            </p>
+          </div>
         </aside>
       </div>
-    </div>
+    </main>
   );
 }
+
+export default Status;

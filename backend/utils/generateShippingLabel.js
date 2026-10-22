@@ -5,6 +5,8 @@ const path = require("path");
 const fs = require("fs");
 
 const generateShippingLabel = async (shipment, res) => {
+  let doc;
+
   try {
     if (!shipment) {
       return res.status(400).json({
@@ -12,19 +14,6 @@ const generateShippingLabel = async (shipment, res) => {
         message: "Shipment details are required.",
       });
     }
-
-    const doc = new PDFDocument({
-      size: "A4",
-      margins: {
-        top: 25,
-        bottom: 25,
-        left: 32,
-        right: 32,
-      },
-      autoFirstPage: true,
-      bufferPages: false,
-      compress: true,
-    });
 
     const trackingNumber = String(
       shipment.trackingNumber || "NOT-AVAILABLE"
@@ -39,27 +28,12 @@ const generateShippingLabel = async (shipment, res) => {
       "_"
     );
 
-    res.setHeader("Content-Type", "application/pdf");
-    res.setHeader(
-      "Content-Disposition",
-      `attachment; filename="ShippingLabel-${safeTracking}.pdf"`
-    );
-    res.setHeader("Cache-Control", "no-store");
-
-    doc.pipe(res);
-
-    const pageWidth = doc.page.width;
-    const pageHeight = doc.page.height;
-
-    const left = 32;
-    const right = pageWidth - 32;
-    const width = right - left;
-
     const blue = "#0B3D91";
     const lightBlue = "#EAF2FC";
     const borderColor = "#B8C7D9";
     const textColor = "#202B3C";
     const muted = "#536477";
+    const white = "#FFFFFF";
 
     const val = (value, fallback = "-") => {
       if (
@@ -72,6 +46,98 @@ const generateShippingLabel = async (shipment, res) => {
 
       return String(value).trim();
     };
+
+    const formatDate = (value) => {
+      if (!value) return "-";
+
+      const date = new Date(value);
+
+      if (Number.isNaN(date.getTime())) {
+        return String(value);
+      }
+
+      return new Intl.DateTimeFormat("en-IN", {
+        timeZone: "Asia/Kolkata",
+        day: "2-digit",
+        month: "short",
+        year: "numeric",
+      }).format(date);
+    };
+
+    const formatTime = (value) => {
+      if (!value) return "-";
+
+      const date = new Date(value);
+
+      if (Number.isNaN(date.getTime())) {
+        return String(value);
+      }
+
+      return new Intl.DateTimeFormat("en-IN", {
+        timeZone: "Asia/Kolkata",
+        hour: "2-digit",
+        minute: "2-digit",
+        hour12: true,
+      }).format(date);
+    };
+
+    // --------------------------------------------------
+    // PRODUCT, INVOICE AND E-WAY BILL VALUES
+    // --------------------------------------------------
+
+    // Show N/A when Product Count has not been provided.
+    // A valid value of 0 is preserved.
+    const productCount = val(shipment.productCount, "N/A");
+
+    const invoiceNumber = val(
+      shipment.invoiceNumber,
+      "N/A"
+    );
+
+    // Support both possible E-Way Bill field spellings.
+    const eWayBillNumber = val(
+      shipment.eWayBillNumber || shipment.ewayBillNumber,
+      "N/A"
+    );
+
+    // --------------------------------------------------
+    // CREATE PDF
+    // --------------------------------------------------
+
+    doc = new PDFDocument({
+      size: "A4",
+      margins: {
+        top: 25,
+        bottom: 25,
+        left: 32,
+        right: 32,
+      },
+      autoFirstPage: true,
+      bufferPages: false,
+      compress: true,
+    });
+
+    res.setHeader("Content-Type", "application/pdf");
+
+    res.setHeader(
+      "Content-Disposition",
+      `attachment; filename="ShippingLabel-${safeTracking}.pdf"`
+    );
+
+    res.setHeader("Cache-Control", "no-store");
+
+    doc.pipe(res);
+
+    const pageWidth = doc.page.width;
+    const pageHeight = doc.page.height;
+
+    const left = 32;
+    const right = pageWidth - 32;
+    const width = right - left;
+
+    // --------------------------------------------------
+    // COMMON DRAWING FUNCTIONS
+    // --------------------------------------------------
 
     const drawText = (
       value,
@@ -186,7 +252,7 @@ const generateShippingLabel = async (shipment, res) => {
     doc
       .font("Helvetica-Bold")
       .fontSize(18)
-      .fillColor("#FFFFFF")
+      .fillColor(white)
       .text("SPEED EXPRESS", titleX, 35, {
         width: right - titleX - 10,
         lineBreak: false,
@@ -195,7 +261,7 @@ const generateShippingLabel = async (shipment, res) => {
     doc
       .font("Helvetica")
       .fontSize(8)
-      .fillColor("#FFFFFF")
+      .fillColor(white)
       .text("Fast • Safe • Reliable Delivery", titleX, 59, {
         width: right - titleX - 10,
         lineBreak: false,
@@ -286,7 +352,7 @@ const generateShippingLabel = async (shipment, res) => {
     }
 
     // --------------------------------------------------
-    // SHIPMENT INFORMATION
+    // BASIC SHIPMENT INFORMATION
     // --------------------------------------------------
 
     let y = 199;
@@ -332,18 +398,67 @@ const generateShippingLabel = async (shipment, res) => {
       36
     );
 
+    y += 44;
+
+    // --------------------------------------------------
+    // PRODUCT, INVOICE AND E-WAY BILL INFORMATION
+    // --------------------------------------------------
+
+    y += 4;
+
+    drawSectionTitle(
+      "PRODUCT, INVOICE & E-WAY BILL INFORMATION",
+      left,
+      y,
+      width
+    );
+
+    y += 21;
+
+    const infoGap = 8;
+    const infoCol = (width - infoGap * 2) / 3;
+
+    drawField(
+      "Product Count",
+      productCount,
+      left,
+      y,
+      infoCol,
+      38
+    );
+
+    drawField(
+      "Invoice Number",
+      invoiceNumber,
+      left + infoCol + infoGap,
+      y,
+      infoCol,
+      38
+    );
+
+    drawField(
+      "E-Way Bill Number",
+      eWayBillNumber,
+      left + (infoCol + infoGap) * 2,
+      y,
+      infoCol,
+      38
+    );
+
+    y += 45;
+
     // --------------------------------------------------
     // SENDER AND RECEIVER TABLES
     // --------------------------------------------------
 
-    y += 47;
-
+    // Removed the duplicate 45-point gap here to save space.
     const columnGap = 10;
     const half = (width - columnGap) / 2;
     const senderX = left;
     const receiverX = left + half + columnGap;
 
     drawSectionTitle("FROM / SENDER", senderX, y, half);
+
     drawSectionTitle("TO / RECEIVER", receiverX, y, half);
 
     y += 21;
@@ -433,17 +548,17 @@ const generateShippingLabel = async (shipment, res) => {
     // SHIPMENT STATUS
     // --------------------------------------------------
 
-    y += 12;
+    y += 10;
 
     drawSectionTitle("SHIPMENT STATUS", left, y, width);
+
     y += 21;
 
-    const statusGap = 0;
-    const statusCol = (width - statusGap * 3) / 4;
+    const statusCol = width / 4;
 
     drawField(
       "Status",
-      shipment.currentStatus,
+      shipment.currentStatus || shipment.status,
       left,
       y,
       statusCol,
@@ -459,9 +574,17 @@ const generateShippingLabel = async (shipment, res) => {
       34
     );
 
+    const statusDate =
+      shipment.currentDate ||
+      formatDate(shipment.updatedAt || shipment.createdAt);
+
+    const statusTime =
+      shipment.currentTime ||
+      formatTime(shipment.updatedAt || shipment.createdAt);
+
     drawField(
       "Date",
-      shipment.currentDate,
+      statusDate,
       left + statusCol * 2,
       y,
       statusCol,
@@ -470,7 +593,7 @@ const generateShippingLabel = async (shipment, res) => {
 
     drawField(
       "Time",
-      shipment.currentTime,
+      statusTime,
       left + statusCol * 3,
       y,
       statusCol,
@@ -547,20 +670,20 @@ const generateShippingLabel = async (shipment, res) => {
       }
     );
 
-    // Ensure the content fits on one A4 page.
     if (y + remarksHeight > footerY - 10) {
       console.warn(
         "Shipping label content is close to the footer. " +
-        "Review field heights if adding more sections."
+          "Review field heights if adding more sections."
       );
     }
 
     doc.end();
   } catch (err) {
-    console.error(
-      "Shipping label generation error:",
-      err
-    );
+    console.error("Shipping label generation error:", err);
+
+    if (doc && !doc.destroyed) {
+      doc.destroy(err);
+    }
 
     if (!res.headersSent) {
       return res.status(500).json({
