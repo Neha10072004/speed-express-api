@@ -372,13 +372,28 @@ const updateShipment = async (req, res) => {
    PATCH /api/shipments/:trackingNumber/status
 ========================================================= */
 
+
 const updateShipmentStatus = async (req, res) => {
+  let uploadedProofId = null;
+  let shipmentSaved = false;
+
   try {
     const identifier = decodeURIComponent(
       req.params.trackingNumber || ""
     ).trim();
 
-    const { status, currentLocation, remarks } = req.body;
+    // Accept both field names for compatibility.
+    const status = String(req.body.status || "").trim();
+
+    const currentLocation = String(
+      req.body.location ??
+      req.body.currentLocation ??
+      ""
+    ).trim();
+
+    const remarks = String(req.body.remarks || "").trim();
+
+    const eventDateTime = req.body.eventDateTime;
 
     if (!identifier) {
       return res.status(400).json({
@@ -390,8 +405,29 @@ const updateShipmentStatus = async (req, res) => {
     if (!status) {
       return res.status(400).json({
         success: false,
-        message: "Shipment status is required.",
+        message:
+          "Shipment status is required. Please select a status.",
       });
+    }
+
+    // Validate the event date if the frontend supplied one.
+    let eventTimestamp = new Date();
+
+    if (
+      eventDateTime !== undefined &&
+      eventDateTime !== null &&
+      String(eventDateTime).trim() !== ""
+    ) {
+      const parsedDate = new Date(eventDateTime);
+
+      if (Number.isNaN(parsedDate.getTime())) {
+        return res.status(400).json({
+          success: false,
+          message: "Please provide a valid shipment event date and time.",
+        });
+      }
+
+      eventTimestamp = parsedDate;
     }
 
     const shipment = await findShipmentByIdentifier(identifier);
@@ -399,21 +435,41 @@ const updateShipmentStatus = async (req, res) => {
     if (!shipment) {
       return res.status(404).json({
         success: false,
-        message: "Shipment not found.",
+        message: `Shipment ${identifier} was not found.`,
       });
     }
 
+    // Save an optional uploaded proof to MongoDB GridFS.
+    if (req.file) {
+      const proof = await saveProof(
+        req.file,
+        shipment.trackingNumber
+      );
+
+      uploadedProofId = proof.fileId.toString();
+
+      shipment.proofOfDelivery = uploadedProofId;
+    }
+
+    // Update shipment information.
     shipment.status = status;
+    shipment.currentLocation = currentLocation;
+    shipment.remarks = remarks;
 
-    if (currentLocation !== undefined) {
-      shipment.currentLocation = currentLocation;
-    }
+    // Add exactly one history entry using the selected event time.
+    shipment.history.push({
+      status,
+      location: currentLocation,
+      remarks,
+      timestamp: eventTimestamp,
+    });
 
-    if (remarks !== undefined) {
-      shipment.remarks = remarks;
-    }
+    // The history entry has already been added above.
+    // Prevent the model's automatic hook from adding a duplicate.
+    shipment.$locals.skipAutomaticHistory = true;
 
     await shipment.save();
+    shipmentSaved = true;
 
     return res.status(200).json({
       success: true,
@@ -423,10 +479,29 @@ const updateShipmentStatus = async (req, res) => {
   } catch (error) {
     console.error("Update shipment status error:", error);
 
+    // Clean up a newly uploaded file if saving the shipment failed.
+    if (uploadedProofId && !shipmentSaved) {
+      try {
+        await deleteProof(uploadedProofId);
+      } catch (cleanupError) {
+        console.error(
+          "Failed to clean up uploaded shipment proof:",
+          cleanupError
+        );
+      }
+    }
+
     if (error.name === "ValidationError") {
       return res.status(400).json({
         success: false,
         message: error.message,
+      });
+    }
+
+    if (error.name === "CastError") {
+      return res.status(400).json({
+        success: false,
+        message: "Invalid shipment information.",
       });
     }
 

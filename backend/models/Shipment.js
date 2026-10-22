@@ -221,6 +221,12 @@ const shipmentSchema = new mongoose.Schema(
 // --------------------------------------------------
 
 shipmentSchema.pre("save", function (next) {
+  // The controller has already added a history entry.
+  if (this.$locals.skipAutomaticHistory) {
+    this.$locals.skipAutomaticHistory = false;
+    return next();
+  }
+
   if (this.isNew) {
     this.history.push({
       status: this.status,

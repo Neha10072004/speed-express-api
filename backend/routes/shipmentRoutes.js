@@ -3,15 +3,11 @@ const express = require("express");
 const router = express.Router();
 
 const shipmentController = require("../controllers/shipmentController");
+const uploadProof = require("../middleware/uploadProof");
 
 /* =========================================================
    SPEED EXPRESS - SHIPMENT ROUTES
 ========================================================= */
-
-/*
-  IMPORTANT:
-  The controller must export every function used below.
-*/
 
 /* ---------------------------------------------------------
    1. CREATE NEW BOOKING
@@ -28,9 +24,17 @@ router.get("/", shipmentController.getAllShipments);
 /* ---------------------------------------------------------
    3. UPDATE SHIPMENT STATUS
    PATCH /api/shipments/:trackingNumber/status
+
+   Supports:
+   - Status
+   - Location
+   - Remarks
+   - Event date/time
+   - Optional proof attachment
 --------------------------------------------------------- */
 router.patch(
   "/:trackingNumber/status",
+  uploadProof.single("proofFile"),
   shipmentController.updateShipmentStatus
 );
 
@@ -56,19 +60,17 @@ router.patch(
    6. DELETE BOOKING
    DELETE /api/shipments/:trackingNumber
 --------------------------------------------------------- */
-// DELETE SHIPMENT
-router.delete("/delete-test", (req, res) => {
-  return res.status(200).json({
-    success: true,
-    message: "DELETE route is registered and responding.",
-  });
-});
+router.delete(
+  "/:trackingNumber",
+  shipmentController.deleteShipment
+);
+
 /* ---------------------------------------------------------
    7. GET SINGLE SHIPMENT
    GET /api/shipments/:trackingNumber
 
-   Supports searching by tracking number or AWD number
-   if the controller checks both fields.
+   Supports tracking number or AWD number if the
+   controller's lookup function supports both.
 --------------------------------------------------------- */
 router.get(
   "/:trackingNumber",
