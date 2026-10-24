@@ -393,6 +393,7 @@ const getShipmentByTrackingNumber = async (req, res) => {
   }
 };
 
+
 /* =========================================================
    UPDATE SHIPMENT DETAILS
    PATCH /api/shipments/:trackingNumber
@@ -405,7 +406,7 @@ const updateShipment = async (req, res) => {
     if (!identifier) {
       return res.status(400).json({
         success: false,
-        message: "Tracking number is required.",
+        message: "Please provide a tracking number or AWD number.",
       });
     }
 
@@ -433,79 +434,111 @@ const updateShipment = async (req, res) => {
       "remarks",
     ];
 
+    // Update permitted fields only.
     for (const field of editableFields) {
-      if (Object.prototype.hasOwnProperty.call(req.body, field)) {
-        shipment[field] = clean(req.body[field]);
+      if (
+        Object.prototype.hasOwnProperty.call(req.body, field)
+      ) {
+        const value = clean(req.body[field]);
+
+        shipment[field] = value;
+
+        // Keep both status fields synchronized.
+        if (field === "status" && value) {
+          shipment.currentStatus = value;
+        }
       }
     }
 
-    if (Object.prototype.hasOwnProperty.call(req.body, "weight")) {
-      const result = validateOptionalNumber(req.body.weight, "Weight");
-
-      if (result.error) {
-        return res.status(400).json({
-          success: false,
-          field: "weight",
-          message: result.error,
-        });
-      }
-
-      shipment.weight = result.value;
-    }
-
-    if (Object.prototype.hasOwnProperty.call(req.body, "productCount")) {
-      const result = validateOptionalNumber(
-        req.body.productCount,
-        "Product count",
-        { integer: true }
+    // Validate and update optional weight.
+    if (
+      Object.prototype.hasOwnProperty.call(req.body, "weight")
+    ) {
+      const weight = validateOptionalNumber(
+        req.body.weight,
+        "weight"
       );
 
-      if (result.error) {
+      if (weight === null) {
         return res.status(400).json({
           success: false,
-          field: "productCount",
-          message: result.error,
+          message: "Weight must be a valid number.",
         });
       }
 
-      shipment.productCount = result.value;
+      shipment.weight = weight;
     }
 
-    if (Object.prototype.hasOwnProperty.call(req.body, "awdNumber")) {
-      const newAwdNumber = normalizeIdentifier(req.body.awdNumber);
+    // Validate and update optional product count.
+    if (
+      Object.prototype.hasOwnProperty.call(
+        req.body,
+        "productCount"
+      )
+    ) {
+      const productCount = validateOptionalNumber(
+        req.body.productCount,
+        "productCount"
+      );
 
-      if (newAwdNumber) {
-        if (newAwdNumber === shipment.trackingNumber) {
-          return res.status(409).json({
-            success: false,
-            field: "awdNumber",
-            message: "AWD number and tracking number must be different.",
-          });
-        }
+      if (
+        productCount === null ||
+        (productCount !== undefined &&
+          productCount !== "" &&
+          (!Number.isInteger(Number(productCount)) ||
+            Number(productCount) < 0))
+      ) {
+        return res.status(400).json({
+          success: false,
+          message: "Product count must be a non-negative integer.",
+        });
+      }
 
-        const existing = await Shipment.findOne({
+      shipment.productCount =
+        productCount === "" || productCount === undefined
+          ? undefined
+          : Number(productCount);
+    }
+
+    // Update AWD number safely.
+    if (
+      Object.prototype.hasOwnProperty.call(
+        req.body,
+        "awdNumber"
+      )
+    ) {
+      const awdNumber = normalizeIdentifier(req.body.awdNumber);
+
+      if (
+        awdNumber &&
+        awdNumber ===
+          normalizeIdentifier(shipment.trackingNumber)
+      ) {
+        return res.status(400).json({
+          success: false,
+          message:
+            "AWD number must be different from the tracking number.",
+        });
+      }
+
+      if (awdNumber) {
+        const duplicate = await Shipment.findOne({
           _id: { $ne: shipment._id },
-          $or: [
-            { trackingNumber: newAwdNumber },
-            { awdNumber: newAwdNumber },
-          ],
+          awdNumber: awdNumber,
         });
 
-        if (existing) {
+        if (duplicate) {
           return res.status(409).json({
             success: false,
-            field: "awdNumber",
-            message: `AWD number "${newAwdNumber}" is already in use.`,
+            message: "This AWD number already exists.",
           });
         }
-
-        shipment.awdNumber = newAwdNumber;
-      } else {
-        // Clearing the AWD field is permitted.
-        shipment.awdNumber = undefined;
       }
+
+      shipment.awdNumber = awdNumber || undefined;
     }
 
+    // Persist changes.
     await shipment.save();
 
     return res.status(200).json({
@@ -517,13 +550,21 @@ const updateShipment = async (req, res) => {
     console.error("Update shipment error:", error);
 
     if (error.code === 11000) {
-      return duplicateKeyResponse(error, res);
+      return res.status(409).json({
+        success: false,
+        message:
+          "A shipment with this tracking number or AWD number already exists.",
+      });
     }
 
-    if (error.name === "ValidationError") {
+    if (
+      error.name === "ValidationError" ||
+      error.name === "CastError"
+    ) {
       return res.status(400).json({
         success: false,
-        message: error.message,
+        message: "Invalid shipment details.",
+        error: error.message,
       });
     }
 
@@ -535,6 +576,7 @@ const updateShipment = async (req, res) => {
   }
 };
 
+
 /* =========================================================
    UPDATE SHIPMENT STATUS
    PATCH /api/shipments/:trackingNumber/status
@@ -545,7 +587,10 @@ const updateShipmentStatus = async (req, res) => {
   let shipmentSaved = false;
 
   try {
-    const identifier = normalizeIdentifier(req.params.trackingNumber);
+    const identifier = normalizeIdentifier(
+      req.params.trackingNumber
+    );
+
     const status = clean(req.body.status);
 
     const currentLocation = clean(
@@ -553,12 +598,13 @@ const updateShipmentStatus = async (req, res) => {
     );
 
     const remarks = clean(req.body.remarks);
+
     const eventDateTime = req.body.eventDateTime;
 
     if (!identifier) {
       return res.status(400).json({
         success: false,
-        message: "Tracking number is required.",
+        message: "Please provide a tracking number or AWD number.",
       });
     }
 
@@ -569,19 +615,16 @@ const updateShipmentStatus = async (req, res) => {
       });
     }
 
-    let eventTimestamp = new Date();
+    // Use the provided event date/time or the current time.
+    const eventTimestamp = eventDateTime
+      ? new Date(eventDateTime)
+      : new Date();
 
-    if (eventDateTime && clean(eventDateTime)) {
-      const parsedDate = new Date(eventDateTime);
-
-      if (Number.isNaN(parsedDate.getTime())) {
-        return res.status(400).json({
-          success: false,
-          message: "Please provide a valid shipment event date and time.",
-        });
-      }
-
-      eventTimestamp = parsedDate;
+    if (Number.isNaN(eventTimestamp.getTime())) {
+      return res.status(400).json({
+        success: false,
+        message: "Invalid status event date/time.",
+      });
     }
 
     const shipment = await findShipmentByIdentifier(identifier);
@@ -589,27 +632,38 @@ const updateShipmentStatus = async (req, res) => {
     if (!shipment) {
       return res.status(404).json({
         success: false,
-        message: `Shipment ${identifier} was not found.`,
+        message: "Shipment not found.",
       });
     }
 
+    // Save proof of delivery if the request contains a file.
     if (req.file) {
-      const proof = await saveProof(req.file, shipment.trackingNumber);
+      const proof = await saveProof(
+        req.file,
+        shipment.trackingNumber
+      );
+
       uploadedProofId = proof.fileId.toString();
       shipment.proofOfDelivery = uploadedProofId;
     }
 
+    // Keep the current status fields synchronized.
     shipment.status = status;
+    shipment.currentStatus = status;
+
+    // Update current shipment information.
     shipment.currentLocation = currentLocation;
     shipment.remarks = remarks;
 
+    // Store the event timestamp in the shipment history.
     shipment.history.push({
-      status,
+      status: status,
       location: currentLocation,
-      remarks,
+      remarks: remarks,
       timestamp: eventTimestamp,
     });
 
+    // Avoid duplicate automatic history if the model supports it.
     shipment.$locals.skipAutomaticHistory = true;
 
     await shipment.save();
@@ -623,22 +677,34 @@ const updateShipmentStatus = async (req, res) => {
   } catch (error) {
     console.error("Update shipment status error:", error);
 
+    // Keep your existing proof-cleanup helper if one is already
+    // implemented in this controller.
     if (uploadedProofId && !shipmentSaved) {
       try {
         await deleteProof(uploadedProofId);
       } catch (cleanupError) {
-        console.error("Failed to clean up uploaded proof:", cleanupError);
+        console.error(
+          "Proof cleanup error:",
+          cleanupError.message
+        );
       }
     }
 
     if (error.code === 11000) {
-      return duplicateKeyResponse(error, res);
+      return res.status(409).json({
+        success: false,
+        message: "A duplicate shipment identifier already exists.",
+      });
     }
 
-    if (error.name === "ValidationError" || error.name === "CastError") {
+    if (
+      error.name === "ValidationError" ||
+      error.name === "CastError"
+    ) {
       return res.status(400).json({
         success: false,
-        message: error.message || "Invalid shipment information.",
+        message: "Invalid shipment status information.",
+        error: error.message,
       });
     }
 

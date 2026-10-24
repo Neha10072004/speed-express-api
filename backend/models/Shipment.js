@@ -1,4 +1,5 @@
 
+
 const mongoose = require("mongoose");
 
 // --------------------------------------------------
@@ -16,6 +17,28 @@ const ALLOWED_STATUSES = [
   "Delivery Attempted - Customer Unavailable",
   "Vehicle Breakdown",
 ];
+
+// --------------------------------------------------
+// NORMALIZE LEGACY STATUS VALUES
+// --------------------------------------------------
+
+const normalizeStatus = (value) => {
+  if (!value) return "Shipment Booked";
+
+  const status = String(value).trim();
+
+  const legacyStatuses = {
+    Delivered: "Delivered Successfully",
+    "In Transit": "In Transit to Next Hub",
+    Booked: "Shipment Booked",
+  };
+
+  const normalized = legacyStatuses[status] || status;
+
+  return ALLOWED_STATUSES.includes(normalized)
+    ? normalized
+    : "Shipment Booked";
+};
 
 // --------------------------------------------------
 // SHIPMENT HISTORY SCHEMA
@@ -74,15 +97,12 @@ const shipmentSchema = new mongoose.Schema(
       uppercase: true,
     },
 
-    // AWD IS OPTIONAL.
-    // Blank or missing AWD numbers are stored as undefined.
-    // Do not set unique: true on this field.
-
     awdNumber: {
       type: String,
       default: undefined,
       trim: true,
       uppercase: true,
+
       set: (value) => {
         if (value === undefined || value === null) {
           return undefined;
@@ -142,7 +162,6 @@ const shipmentSchema = new mongoose.Schema(
       trim: true,
     },
 
-    // Weight is optional.
     weight: {
       type: Number,
       default: undefined,
@@ -176,7 +195,8 @@ const shipmentSchema = new mongoose.Schema(
       trim: true,
     },
 
-    // SHIPMENT STATUS AND LOCATION
+    // SHIPMENT STATUS
+    // "status" is the primary source of truth.
 
     status: {
       type: String,
@@ -184,6 +204,15 @@ const shipmentSchema = new mongoose.Schema(
       default: "Shipment Booked",
       required: true,
     },
+
+    // Compatibility field for existing frontend code.
+
+    currentStatus: {
+  type: String,
+  enum: ALLOWED_STATUSES,
+  default: "Shipment Booked",
+  trim: true,
+},
 
     currentLocation: {
       type: String,
@@ -204,7 +233,7 @@ const shipmentSchema = new mongoose.Schema(
       default: [],
     },
 
-    // OPTIONAL PROOF / DOCUMENT INFORMATION
+    // PROOF OF DELIVERY
 
     proofOfDelivery: {
       type: String,
@@ -218,38 +247,51 @@ const shipmentSchema = new mongoose.Schema(
 );
 
 // --------------------------------------------------
-// AUTOMATIC HISTORY ENTRY
+// STATUS SYNCHRONIZATION + AUTOMATIC HISTORY
 // --------------------------------------------------
 
 shipmentSchema.pre("save", function (next) {
-  // Avoid adding duplicate history when the controller
-  // has already added the status history entry.
-  if (this.$locals.skipAutomaticHistory) {
-    this.$locals.skipAutomaticHistory = false;
+  try {
+    // Normalize older status values and keep both fields aligned.
+    const normalizedStatus = normalizeStatus(this.status);
+
+    this.status = normalizedStatus;
+    this.currentStatus = normalizedStatus;
+
+    // Avoid duplicate history when the controller already
+    // appended the status event.
+    if (this.$locals.skipAutomaticHistory) {
+      this.$locals.skipAutomaticHistory = false;
+      return next();
+    }
+
+    // Add the initial booking history.
+    if (this.isNew) {
+      this.history.push({
+        status: this.status,
+        location: this.currentLocation || "",
+        remarks:
+          this.remarks || "Shipment booking created.",
+        timestamp: new Date(),
+      });
+    } else if (
+      this.isModified("status") ||
+      this.isModified("currentLocation") ||
+      this.isModified("remarks")
+    ) {
+      // Add history when shipment status details change.
+      this.history.push({
+        status: this.status,
+        location: this.currentLocation || "",
+        remarks: this.remarks || "",
+        timestamp: new Date(),
+      });
+    }
+
     return next();
+  } catch (error) {
+    return next(error);
   }
-
-  if (this.isNew) {
-    this.history.push({
-      status: this.status,
-      location: this.currentLocation || "",
-      remarks: this.remarks || "Shipment booking created.",
-      timestamp: new Date(),
-    });
-  } else if (
-    this.isModified("status") ||
-    this.isModified("currentLocation") ||
-    this.isModified("remarks")
-  ) {
-    this.history.push({
-      status: this.status,
-      location: this.currentLocation || "",
-      remarks: this.remarks || "",
-      timestamp: new Date(),
-    });
-  }
-
-  next();
 });
 
 // --------------------------------------------------
@@ -259,3 +301,4 @@ shipmentSchema.pre("save", function (next) {
 module.exports =
   mongoose.models.Shipment ||
   mongoose.model("Shipment", shipmentSchema);
+

@@ -4,13 +4,71 @@ import { trackShipment } from "../services/api";
 import "./AdminPages.css";
 
 const statuses = ["In Transit", "Out For Delivery", "Delivered"];
-
+ 
 const API_URL = (
   import.meta.env.VITE_API_URL ||
   (import.meta.env.DEV
     ? "http://localhost:5000/api"
     : "https://api.speedexp.in/api")
 ).replace(/\/+$/, "");
+
+// Format shipment dates consistently.
+const formatDate = (value) => {
+  if (!value) return "-";
+
+  const date = new Date(value);
+
+  if (Number.isNaN(date.getTime())) {
+    return String(value);
+  }
+
+  return date.toLocaleDateString("en-IN", {
+    day: "2-digit",
+    month: "short",
+    year: "numeric",
+    timeZone: "Asia/Kolkata",
+  });
+};
+
+// Format shipment times using Indian Standard Time.
+const formatTime = (value) => {
+  if (!value) return "-";
+
+  const date = new Date(value);
+
+  if (Number.isNaN(date.getTime())) {
+    return String(value);
+  }
+
+  return date.toLocaleTimeString("en-IN", {
+    hour: "2-digit",
+    minute: "2-digit",
+    hour12: true,
+    timeZone: "Asia/Kolkata",
+  });
+};
+
+// Normalize backend history fields for the tracking table.
+const normalizeHistory = (items) => {
+  if (!Array.isArray(items)) return [];
+
+  return items.map((item) => {
+    const timestamp =
+      item.timestamp ||
+      item.eventDateTime ||
+      item.createdAt ||
+      item.updatedAt;
+
+    return {
+      ...item,
+      status: item.status || item.currentStatus || "-",
+      location: item.location || item.currentLocation || "-",
+      date: item.date || formatDate(timestamp),
+      time: item.time || formatTime(timestamp),
+      remarks: item.remarks || "-",
+    };
+  });
+};
 
 export default function TrackPackage() {
   const [searchNumber, setSearchNumber] = useState("");
@@ -33,6 +91,9 @@ export default function TrackPackage() {
     )}/label`;
   };
 
+  // =========================================================
+  // SEARCH SHIPMENT
+  // =========================================================
   const handleSearch = async (e) => {
     e.preventDefault();
 
@@ -49,8 +110,10 @@ export default function TrackPackage() {
       setShipment(null);
 
       const response = await trackShipment(number);
+
       const data =
         response?.shipment ||
+        response?.data?.shipment ||
         response?.data ||
         response;
 
@@ -58,7 +121,114 @@ export default function TrackPackage() {
         throw new Error("Shipment information was not returned.");
       }
 
-      setShipment(data);
+      // Use the backend's current status first.
+      // The backend stores the current status in "status".
+ // Prefer currentStatus when available.
+// Fall back to status for older shipment records.
+const currentStatus =
+  data.status ||
+  data.currentStatus ||
+  data.latestStatus ||
+  "Shipment Booked";
+   
+
+// Support both history fields without ignoring either array.
+const statusHistory = Array.isArray(data.statusHistory)
+  ? data.statusHistory
+  : [];
+
+const shipmentHistory = Array.isArray(data.history)
+  ? data.history
+  : [];
+
+const rawHistory = [...statusHistory, ...shipmentHistory];
+
+// Remove duplicate events when both arrays contain the same entries.
+const uniqueHistory = rawHistory.filter((item, index, array) => {
+  const key = JSON.stringify({
+    status: item.status || item.currentStatus || item.event || "",
+    location: item.location || "",
+    timestamp:
+      item.timestamp ||
+      item.eventDateTime ||
+      item.createdAt ||
+      item.date ||
+      "",
+    remarks: item.remarks || item.description || "",
+  });
+
+  return (
+    array.findIndex((entry) => {
+      const entryKey = JSON.stringify({
+        status:
+          entry.status ||
+          entry.currentStatus ||
+          entry.event ||
+          "",
+        location: entry.location || "",
+        timestamp:
+          entry.timestamp ||
+          entry.eventDateTime ||
+          entry.createdAt ||
+          entry.date ||
+          "",
+        remarks: entry.remarks || entry.description || "",
+      });
+
+      return entryKey === key;
+    }) === index
+  );
+});
+
+const normalizedHistory = normalizeHistory(uniqueHistory);
+
+      // Use the latest history entry as a fallback for details.
+      const latestHistory =
+        normalizedHistory.length > 0
+          ? normalizedHistory[normalizedHistory.length - 1]
+          : {};
+
+      const currentTimestamp =
+        latestHistory.timestamp ||
+        latestHistory.eventDateTime ||
+        latestHistory.createdAt;
+
+      const normalizedShipment = {
+        ...data,
+
+        currentStatus,
+
+        currentLocation:
+          data.currentLocation ||
+          data.location ||
+          latestHistory.location ||
+          "",
+
+        currentDate:
+          data.currentDate ||
+          (currentTimestamp ? formatDate(currentTimestamp) : "") ||
+          latestHistory.date ||
+          "",
+
+        currentTime:
+          data.currentTime ||
+          (currentTimestamp ? formatTime(currentTimestamp) : "") ||
+          latestHistory.time ||
+          "",
+
+        currentRemarks:
+          data.currentRemarks ||
+          data.remarks ||
+          latestHistory.remarks ||
+          "",
+
+        statusHistory: normalizedHistory,
+      };
+
+      console.log("Tracking API response:", response);
+      console.log("Normalized shipment:", normalizedShipment);
+
+      setShipment(normalizedShipment);
     } catch (err) {
       console.error("Track Package Error:", err);
       setError(err?.message || "Shipment not found.");
@@ -67,7 +237,9 @@ export default function TrackPackage() {
     }
   };
 
-  // Always request the PDF from the backend label endpoint.
+  // =========================================================
+  // FETCH SHIPPING LABEL PDF
+  // =========================================================
   const fetchLabelPdf = async (data) => {
     const trackingNumber = getTrackingNumber(data);
     const url = getLabelUrl(data);
@@ -104,6 +276,7 @@ export default function TrackPackage() {
     if (!contentType.toLowerCase().includes("application/pdf")) {
       const responseText = await response.text();
       console.error("Unexpected label response:", responseText);
+
       throw new Error(
         "The server did not return a PDF. Check the backend label route."
       );
@@ -118,6 +291,9 @@ export default function TrackPackage() {
     return { blob, trackingNumber };
   };
 
+  // =========================================================
+  // DOWNLOAD SHIPPING LABEL
+  // =========================================================
   const downloadLabel = async (data) => {
     let objectUrl;
 
@@ -126,6 +302,7 @@ export default function TrackPackage() {
       setError("");
 
       const { blob, trackingNumber } = await fetchLabelPdf(data);
+
       objectUrl = window.URL.createObjectURL(blob);
 
       const link = document.createElement("a");
@@ -139,6 +316,7 @@ export default function TrackPackage() {
       console.log("Downloaded label for:", trackingNumber);
     } catch (err) {
       console.error("Download Label Error:", err);
+
       setError(
         err instanceof TypeError
           ? `Cannot connect to the API at ${API_URL}. Check the server and CORS settings.`
@@ -146,16 +324,18 @@ export default function TrackPackage() {
       );
     } finally {
       if (objectUrl) {
-        window.setTimeout(
-          () => window.URL.revokeObjectURL(objectUrl),
-          10000
-        );
+        window.setTimeout(() => {
+          window.URL.revokeObjectURL(objectUrl);
+        }, 10000);
       }
 
       setLabelLoading(false);
     }
   };
 
+  // =========================================================
+  // PRINT SHIPPING LABEL
+  // =========================================================
   const printLabel = async (data) => {
     let printWindow = null;
     let objectUrl = null;
@@ -164,7 +344,7 @@ export default function TrackPackage() {
       setPrintLoading(true);
       setError("");
 
-      // Open a window immediately to reduce popup-blocking issues.
+      // Open immediately to reduce popup-blocking issues.
       printWindow = window.open("", "_blank");
 
       if (!printWindow) {
@@ -176,22 +356,26 @@ export default function TrackPackage() {
       printWindow.document.write(`
         <!DOCTYPE html>
         <html>
-          <head><title>Speed Express Shipping Label</title></head>
+          <head>
+            <title>Speed Express Shipping Label</title>
+          </head>
           <body style="font-family:Arial,sans-serif;padding:24px">
             <p>Loading shipping label...</p>
           </body>
         </html>
       `);
+
       printWindow.document.close();
 
       const { blob, trackingNumber } = await fetchLabelPdf(data);
+
       objectUrl = window.URL.createObjectURL(blob);
 
       printWindow.document.title = `SpeedExpress-${trackingNumber}`;
       printWindow.location.replace(objectUrl);
       printWindow.focus();
 
-      // Allow the browser PDF viewer time to load the document.
+      // Allow the browser PDF viewer time to load.
       window.setTimeout(() => {
         if (objectUrl) {
           window.URL.revokeObjectURL(objectUrl);
@@ -220,22 +404,38 @@ export default function TrackPackage() {
     }
   };
 
+  // =========================================================
+  // STATUS PROGRESS
+  // =========================================================
   const currentIndex = shipment
     ? statuses.indexOf(shipment.currentStatus)
     : -1;
 
   const statusClass = (status) => {
-    if (status === "Delivered") return "admin-status-delivered";
-    if (status === "Out For Delivery") return "admin-status-out";
+    if (status === "Delivered") {
+      return "admin-status-delivered";
+    }
+
+    if (status === "Out For Delivery") {
+      return "admin-status-out";
+    }
+
     return "admin-status-transit";
   };
 
+  // =========================================================
+  // PAGE UI
+  // =========================================================
   return (
     <div className="admin-page">
       <div className="admin-page-header">
         <div>
-          <div className="admin-page-kicker">SHIPMENT MANAGEMENT</div>
+          <div className="admin-page-kicker">
+            SHIPMENT MANAGEMENT
+          </div>
+
           <h2>Track Package</h2>
+
           <p>
             Search a shipment using Tracking Number or AWD Number.
           </p>
@@ -246,18 +446,24 @@ export default function TrackPackage() {
         </div>
       </div>
 
+      {/* SEARCH FORM */}
       <div className="admin-track-search-card">
         <div className="admin-track-search-title">
           <div className="track-search-icon">🔍</div>
+
           <div>
             <h3>Search Shipment</h3>
             <p>
-              Enter Tracking Number or AWD Number to view shipment details.
+              Enter Tracking Number or AWD Number to view shipment
+              details.
             </p>
           </div>
         </div>
 
-        <form className="admin-track-form" onSubmit={handleSearch}>
+        <form
+          className="admin-track-form"
+          onSubmit={handleSearch}
+        >
           <input
             type="text"
             value={searchNumber}
@@ -271,9 +477,11 @@ export default function TrackPackage() {
         </form>
       </div>
 
+      {/* ERROR MESSAGE */}
       {error && (
         <div className="admin-alert admin-alert-error">
           <span className="alert-icon">!</span>
+
           <div>
             <strong>Shipment Error</strong>
             <p>{error}</p>
@@ -281,14 +489,20 @@ export default function TrackPackage() {
         </div>
       )}
 
+      {/* SHIPMENT RESULT */}
       {shipment && (
         <div className="admin-track-result">
           <div className="admin-track-result-header">
             <div>
-              <span className="track-result-label">SHIPMENT FOUND</span>
+              <span className="track-result-label">
+                SHIPMENT FOUND
+              </span>
+
               <h3>{shipment.trackingNumber || "-"}</h3>
+
               <p>
-                AWD Number: <strong>{shipment.awdNumber || "-"}</strong>
+                AWD Number:{" "}
+                <strong>{shipment.awdNumber || "-"}</strong>
               </p>
             </div>
 
@@ -302,6 +516,7 @@ export default function TrackPackage() {
             </div>
           </div>
 
+          {/* LABEL ACTIONS */}
           <div
             style={{
               display: "flex",
@@ -326,10 +541,13 @@ export default function TrackPackage() {
                 fontWeight: 600,
                 background: "#0b3d91",
                 color: "#fff",
-                opacity: labelLoading || printLoading ? 0.7 : 1,
+                opacity:
+                  labelLoading || printLoading ? 0.7 : 1,
               }}
             >
-              {labelLoading ? "Downloading..." : "📄 Download Label"}
+              {labelLoading
+                ? "Downloading..."
+                : "📄 Download Label"}
             </button>
 
             <button
@@ -347,13 +565,15 @@ export default function TrackPackage() {
                 fontWeight: 600,
                 background: "#1769aa",
                 color: "#fff",
-                opacity: printLoading || labelLoading ? 0.7 : 1,
+                opacity:
+                  printLoading || labelLoading ? 0.7 : 1,
               }}
             >
               {printLoading ? "Opening..." : "🖨️ Print Label"}
             </button>
           </div>
 
+          {/* STATUS PROGRESS */}
           <div className="admin-track-progress">
             {statuses.map((status, index) => {
               const completed = index <= currentIndex;
@@ -369,6 +589,7 @@ export default function TrackPackage() {
                     <div className="admin-track-circle">
                       {completed ? "✓" : index + 1}
                     </div>
+
                     <span>{status}</span>
                   </div>
 
@@ -384,6 +605,7 @@ export default function TrackPackage() {
             })}
           </div>
 
+          {/* CURRENT STATUS */}
           <section className="admin-track-section">
             <div className="admin-section-heading">
               <h3>Current Shipment Status</h3>
@@ -397,27 +619,34 @@ export default function TrackPackage() {
                     <th>Status</th>
                     <td>{shipment.currentStatus || "-"}</td>
                   </tr>
+
                   <tr>
                     <th>Location</th>
                     <td>{shipment.currentLocation || "-"}</td>
                   </tr>
+
                   <tr>
                     <th>Date</th>
                     <td>{shipment.currentDate || "-"}</td>
                   </tr>
+
                   <tr>
                     <th>Time</th>
                     <td>{shipment.currentTime || "-"}</td>
                   </tr>
+
                   <tr>
                     <th>Remarks</th>
-                    <td>{shipment.currentRemarks || "No remarks"}</td>
+                    <td>
+                      {shipment.currentRemarks || "No remarks"}
+                    </td>
                   </tr>
                 </tbody>
               </table>
             </div>
           </section>
 
+          {/* SHIPMENT IDENTIFICATION */}
           <section className="admin-track-section">
             <div className="admin-section-heading">
               <h3>Shipment Identification</h3>
@@ -431,6 +660,7 @@ export default function TrackPackage() {
                     <th>Tracking Number</th>
                     <td>{shipment.trackingNumber || "-"}</td>
                   </tr>
+
                   <tr>
                     <th>AWD Number</th>
                     <td>{shipment.awdNumber || "-"}</td>
@@ -440,6 +670,7 @@ export default function TrackPackage() {
             </div>
           </section>
 
+          {/* SENDER AND RECEIVER */}
           <section className="admin-track-section">
             <div className="admin-section-heading">
               <h3>Sender &amp; Receiver</h3>
@@ -455,17 +686,20 @@ export default function TrackPackage() {
                     <th>Receiver</th>
                   </tr>
                 </thead>
+
                 <tbody>
                   <tr>
                     <th>Name</th>
                     <td>{shipment.senderName || "-"}</td>
                     <td>{shipment.receiverName || "-"}</td>
                   </tr>
+
                   <tr>
                     <th>Phone</th>
                     <td>{shipment.senderPhone || "-"}</td>
                     <td>{shipment.receiverPhone || "-"}</td>
                   </tr>
+
                   <tr>
                     <th>Address</th>
                     <td>{shipment.senderAddress || "-"}</td>
@@ -476,6 +710,7 @@ export default function TrackPackage() {
             </div>
           </section>
 
+          {/* PACKAGE DETAILS */}
           <section className="admin-track-section">
             <div className="admin-section-heading">
               <h3>Package Details</h3>
@@ -489,11 +724,13 @@ export default function TrackPackage() {
                     <th>Package Type</th>
                     <td>{shipment.packageType || "-"}</td>
                   </tr>
+
                   <tr>
                     <th>Weight</th>
                     <td>
                       {shipment.weight !== undefined &&
-                      shipment.weight !== null
+                      shipment.weight !== null &&
+                      shipment.weight !== ""
                         ? `${shipment.weight} KG`
                         : "-"}
                     </td>
@@ -503,14 +740,14 @@ export default function TrackPackage() {
             </div>
           </section>
 
+          {/* SHIPMENT HISTORY */}
           <section className="admin-track-section">
             <div className="admin-section-heading">
               <h3>Shipment Status History</h3>
               <p>Complete shipment movement history</p>
             </div>
 
-            {Array.isArray(shipment.statusHistory) &&
-            shipment.statusHistory.length > 0 ? (
+            {shipment.statusHistory.length > 0 ? (
               <div className="admin-detail-table-wrapper">
                 <table className="admin-detail-table admin-history-table">
                   <thead>
@@ -522,28 +759,33 @@ export default function TrackPackage() {
                       <th>Remarks</th>
                     </tr>
                   </thead>
+
                   <tbody>
-                    {shipment.statusHistory.map((history, index) => (
-                      <tr key={history._id || index}>
-                        <td>
-                          <span
-                            className={`history-status ${
-                              history.status === "Delivered"
-                                ? "history-delivered"
-                                : history.status === "Out For Delivery"
-                                ? "history-out"
-                                : "history-transit"
-                            }`}
-                          >
-                            {history.status || "-"}
-                          </span>
-                        </td>
-                        <td>{history.location || "-"}</td>
-                        <td>{history.date || "-"}</td>
-                        <td>{history.time || "-"}</td>
-                        <td>{history.remarks || "-"}</td>
-                      </tr>
-                    ))}
+                    {shipment.statusHistory.map(
+                      (history, index) => (
+                        <tr key={history._id || index}>
+                          <td>
+                            <span
+                              className={`history-status ${
+                                history.status === "Delivered"
+                                  ? "history-delivered"
+                                  : history.status ===
+                                      "Out For Delivery"
+                                    ? "history-out"
+                                    : "history-transit"
+                              }`}
+                            >
+                              {history.status || "-"}
+                            </span>
+                          </td>
+
+                          <td>{history.location || "-"}</td>
+                          <td>{history.date || "-"}</td>
+                          <td>{history.time || "-"}</td>
+                          <td>{history.remarks || "-"}</td>
+                        </tr>
+                      )
+                    )}
                   </tbody>
                 </table>
               </div>
@@ -556,16 +798,21 @@ export default function TrackPackage() {
         </div>
       )}
 
+      {/* EMPTY STATE */}
       {!shipment && !loading && !error && (
         <div className="admin-track-empty">
           <div className="admin-track-empty-icon">📦</div>
+
           <h3>Track Your Shipment</h3>
+
           <p>
-            Enter a Tracking Number or AWD Number above to view complete
-            shipment information.
+            Enter a Tracking Number or AWD Number above to view
+            complete shipment information.
           </p>
         </div>
       )}
     </div>
   );
 }
+
+ 
