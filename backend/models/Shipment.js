@@ -3,7 +3,6 @@ const mongoose = require("mongoose");
 
 // --------------------------------------------------
 // ALLOWED SHIPMENT STATUSES
-// Must match shipmentController.js
 // --------------------------------------------------
 
 const ALLOWED_STATUSES = [
@@ -20,7 +19,6 @@ const ALLOWED_STATUSES = [
 
 // --------------------------------------------------
 // SHIPMENT HISTORY SCHEMA
-// Records status and location changes over time
 // --------------------------------------------------
 
 const shipmentHistorySchema = new mongoose.Schema(
@@ -59,9 +57,7 @@ const shipmentHistorySchema = new mongoose.Schema(
 
 const shipmentSchema = new mongoose.Schema(
   {
-    // ----------------------------------------------
     // BOOKING INFORMATION
-    // ----------------------------------------------
 
     bookingType: {
       type: String,
@@ -72,22 +68,33 @@ const shipmentSchema = new mongoose.Schema(
 
     trackingNumber: {
       type: String,
-      required: true,
+      required: [true, "Tracking number is required."],
       unique: true,
       trim: true,
-      index: true,
+      uppercase: true,
     },
+
+    // AWD IS OPTIONAL.
+    // Blank or missing AWD numbers are stored as undefined.
+    // Do not set unique: true on this field.
 
     awdNumber: {
       type: String,
-      default: "",
+      default: undefined,
       trim: true,
-      index: true,
+      uppercase: true,
+      set: (value) => {
+        if (value === undefined || value === null) {
+          return undefined;
+        }
+
+        const cleaned = String(value).trim().toUpperCase();
+
+        return cleaned || undefined;
+      },
     },
 
-    // ----------------------------------------------
     // SENDER DETAILS
-    // ----------------------------------------------
 
     senderName: {
       type: String,
@@ -107,9 +114,7 @@ const shipmentSchema = new mongoose.Schema(
       trim: true,
     },
 
-    // ----------------------------------------------
     // RECEIVER DETAILS
-    // ----------------------------------------------
 
     receiverName: {
       type: String,
@@ -129,9 +134,7 @@ const shipmentSchema = new mongoose.Schema(
       trim: true,
     },
 
-    // ----------------------------------------------
     // PACKAGE DETAILS
-    // ----------------------------------------------
 
     packageType: {
       type: String,
@@ -150,11 +153,16 @@ const shipmentSchema = new mongoose.Schema(
       type: Number,
       default: 1,
       min: [1, "Product count must be at least 1."],
+      validate: {
+        validator: (value) =>
+          value === undefined ||
+          value === null ||
+          Number.isInteger(value),
+        message: "Product count must be a whole number.",
+      },
     },
 
-    // ----------------------------------------------
     // BILLING DETAILS
-    // ----------------------------------------------
 
     invoiceNumber: {
       type: String,
@@ -168,9 +176,7 @@ const shipmentSchema = new mongoose.Schema(
       trim: true,
     },
 
-    // ----------------------------------------------
     // SHIPMENT STATUS AND LOCATION
-    // ----------------------------------------------
 
     status: {
       type: String,
@@ -191,18 +197,14 @@ const shipmentSchema = new mongoose.Schema(
       trim: true,
     },
 
-    // ----------------------------------------------
     // TRACKING HISTORY
-    // ----------------------------------------------
 
     history: {
       type: [shipmentHistorySchema],
       default: [],
     },
 
-    // ----------------------------------------------
     // OPTIONAL PROOF / DOCUMENT INFORMATION
-    // ----------------------------------------------
 
     proofOfDelivery: {
       type: String,
@@ -217,11 +219,11 @@ const shipmentSchema = new mongoose.Schema(
 
 // --------------------------------------------------
 // AUTOMATIC HISTORY ENTRY
-// Record the initial status and subsequent changes.
 // --------------------------------------------------
 
 shipmentSchema.pre("save", function (next) {
-  // The controller has already added a history entry.
+  // Avoid adding duplicate history when the controller
+  // has already added the status history entry.
   if (this.$locals.skipAutomaticHistory) {
     this.$locals.skipAutomaticHistory = false;
     return next();
