@@ -604,7 +604,8 @@ const updateShipmentStatus = async (req, res) => {
     if (!identifier) {
       return res.status(400).json({
         success: false,
-        message: "Please provide a tracking number or AWD number.",
+        message:
+          "Please provide a tracking number or AWD number.",
       });
     }
 
@@ -615,10 +616,18 @@ const updateShipmentStatus = async (req, res) => {
       });
     }
 
-    // Use the provided event date/time or the current time.
-    const eventTimestamp = eventDateTime
-      ? new Date(eventDateTime)
-      : new Date();
+    if (!currentLocation) {
+      return res.status(400).json({
+        success: false,
+        message: "Please enter the current shipment location.",
+      });
+    }
+
+    // Save a valid event timestamp.
+    const eventTimestamp =
+      eventDateTime && String(eventDateTime).trim()
+        ? new Date(eventDateTime)
+        : new Date();
 
     if (Number.isNaN(eventTimestamp.getTime())) {
       return res.status(400).json({
@@ -636,7 +645,12 @@ const updateShipmentStatus = async (req, res) => {
       });
     }
 
-    // Save proof of delivery if the request contains a file.
+    // Ensure history exists before appending a new event.
+    if (!Array.isArray(shipment.history)) {
+      shipment.history = [];
+    }
+
+    // Save optional proof of delivery.
     if (req.file) {
       const proof = await saveProof(
         req.file,
@@ -647,23 +661,22 @@ const updateShipmentStatus = async (req, res) => {
       shipment.proofOfDelivery = uploadedProofId;
     }
 
-    // Keep the current status fields synchronized.
+    // Update the current shipment status.
     shipment.status = status;
     shipment.currentStatus = status;
-
-    // Update current shipment information.
     shipment.currentLocation = currentLocation;
     shipment.remarks = remarks;
 
-    // Store the event timestamp in the shipment history.
+    // Append a new event without deleting older events.
     shipment.history.push({
-      status: status,
+      status,
       location: currentLocation,
-      remarks: remarks,
+      remarks,
       timestamp: eventTimestamp,
     });
 
-    // Avoid duplicate automatic history if the model supports it.
+    // Avoid duplicate history if your model middleware
+    // supports this flag.
     shipment.$locals.skipAutomaticHistory = true;
 
     await shipment.save();
@@ -677,8 +690,6 @@ const updateShipmentStatus = async (req, res) => {
   } catch (error) {
     console.error("Update shipment status error:", error);
 
-    // Keep your existing proof-cleanup helper if one is already
-    // implemented in this controller.
     if (uploadedProofId && !shipmentSaved) {
       try {
         await deleteProof(uploadedProofId);
@@ -693,7 +704,8 @@ const updateShipmentStatus = async (req, res) => {
     if (error.code === 11000) {
       return res.status(409).json({
         success: false,
-        message: "A duplicate shipment identifier already exists.",
+        message:
+          "A duplicate shipment identifier already exists.",
       });
     }
 
@@ -715,6 +727,7 @@ const updateShipmentStatus = async (req, res) => {
     });
   }
 };
+
 
 /* =========================================================
    DELETE SHIPMENT

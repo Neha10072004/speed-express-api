@@ -229,9 +229,32 @@ const shipmentSchema = new mongoose.Schema(
     // TRACKING HISTORY
 
     history: {
-      type: [shipmentHistorySchema],
-      default: [],
-    },
+  type: [
+    new mongoose.Schema(
+      {
+        status: {
+          type: String,
+          required: true,
+        },
+        location: {
+          type: String,
+          default: "",
+        },
+        remarks: {
+          type: String,
+          default: "",
+        },
+        timestamp: {
+          type: Date,
+          default: Date.now,
+          required: true,
+        },
+      },
+      { _id: true }
+    ),
+  ],
+  default: [],
+},
 
     // PROOF OF DELIVERY
 

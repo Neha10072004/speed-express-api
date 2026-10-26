@@ -1,818 +1,715 @@
 
-import React, { useState } from "react";
+import { useState } from "react";
 import { trackShipment } from "../services/api";
-import "./AdminPages.css";
+import "./TrackPackage.css";
 
-const statuses = ["In Transit", "Out For Delivery", "Delivered"];
- 
-const API_URL = (
-  import.meta.env.VITE_API_URL ||
-  (import.meta.env.DEV
-    ? "http://localhost:5000/api"
-    : "https://api.speedexp.in/api")
-).replace(/\/+$/, "");
+const STATUS_STEPS = [
+  "Shipment Booked",
+  "In Transit to Next Hub",
+  "Delivered Successfully",
+];
 
-// Format shipment dates consistently.
-const formatDate = (value) => {
-  if (!value) return "-";
+function formatDateTime(value) {
+  if (!value) {
+    return { date: "—", time: "—" };
+  }
 
   const date = new Date(value);
 
   if (Number.isNaN(date.getTime())) {
-    return String(value);
+    return { date: "—", time: "—" };
   }
 
-  return date.toLocaleDateString("en-IN", {
-    day: "2-digit",
-    month: "short",
-    year: "numeric",
-    timeZone: "Asia/Kolkata",
-  });
-};
+  return {
+    date: date.toLocaleDateString("en-IN", {
+      timeZone: "Asia/Kolkata",
+      day: "2-digit",
+      month: "short",
+      year: "numeric",
+    }),
+    time: date.toLocaleTimeString("en-IN", {
+      timeZone: "Asia/Kolkata",
+      hour: "2-digit",
+      minute: "2-digit",
+      hour12: false,
+    }),
+  };
+}
 
-// Format shipment times using Indian Standard Time.
-const formatTime = (value) => {
-  if (!value) return "-";
+function getShipmentHistory(shipment) {
+  const events = Array.isArray(shipment?.history)
+    ? shipment.history
+    : Array.isArray(shipment?.statusHistory)
+      ? shipment.statusHistory
+      : [];
 
-  const date = new Date(value);
+  return events
+    .map((event, index) => ({
+      ...event,
+      status:
+        event.status ||
+        event.currentStatus ||
+        "Status Updated",
+      location:
+        event.location ||
+        event.currentLocation ||
+        shipment.currentLocation ||
+        "Location unavailable",
+      remarks: event.remarks || "",
+      timestamp:
+        event.timestamp ||
+        event.updatedAt ||
+        event.createdAt ||
+        null,
+      originalIndex: index,
+    }))
+    .sort((a, b) => {
+      const timeA = a.timestamp
+        ? new Date(a.timestamp).getTime()
+        : 0;
+      const timeB = b.timestamp
+        ? new Date(b.timestamp).getTime()
+        : 0;
 
-  if (Number.isNaN(date.getTime())) {
-    return String(value);
+      return timeB - timeA;
+    });
+}
+
+function getStatusStep(status) {
+  const value = String(status || "").toLowerCase();
+
+  if (
+    value.includes("delivered successfully") ||
+    value === "delivered"
+  ) {
+    return 2;
   }
 
-  return date.toLocaleTimeString("en-IN", {
-    hour: "2-digit",
-    minute: "2-digit",
-    hour12: true,
-    timeZone: "Asia/Kolkata",
-  });
-};
+  if (
+    value.includes("transit") ||
+    value.includes("out for delivery") ||
+    value.includes("vehicle delayed") ||
+    value.includes("vehicle breakdown") ||
+    value.includes("delivery attempted")
+  ) {
+    return 1;
+  }
 
-// Normalize backend history fields for the tracking table.
-const normalizeHistory = (items) => {
-  if (!Array.isArray(items)) return [];
+  if (
+    value.includes("cancelled")
+  ) {
+    return -1;
+  }
 
-  return items.map((item) => {
-    const timestamp =
-      item.timestamp ||
-      item.eventDateTime ||
-      item.createdAt ||
-      item.updatedAt;
+  return 0;
+}
 
-    return {
-      ...item,
-      status: item.status || item.currentStatus || "-",
-      location: item.location || item.currentLocation || "-",
-      date: item.date || formatDate(timestamp),
-      time: item.time || formatTime(timestamp),
-      remarks: item.remarks || "-",
-    };
-  });
-};
+function getValue(...values) {
+  const value = values.find(
+    (item) =>
+      item !== undefined &&
+      item !== null &&
+      String(item).trim() !== ""
+  );
+
+  return value ?? "—";
+}
+
+function DetailRow({ label, value }) {
+  return (
+    <div className="tracking-detail-row">
+      <div className="tracking-detail-label">{label}</div>
+      <div className="tracking-detail-value">{value}</div>
+    </div>
+  );
+}
 
 export default function TrackPackage() {
-  const [searchNumber, setSearchNumber] = useState("");
+  const [identifier, setIdentifier] = useState("");
   const [shipment, setShipment] = useState(null);
+  const [history, setHistory] = useState([]);
+  const [activeTab, setActiveTab] = useState("details");
   const [loading, setLoading] = useState(false);
-  const [labelLoading, setLabelLoading] = useState(false);
-  const [printLoading, setPrintLoading] = useState(false);
+  const [searched, setSearched] = useState(false);
   const [error, setError] = useState("");
 
-  const getTrackingNumber = (data) =>
-    String(data?.trackingNumber || "").trim();
+  const handleSearch = async (event) => {
+    event.preventDefault();
 
-  const getLabelUrl = (data) => {
-    const trackingNumber = getTrackingNumber(data);
+    const searchValue = identifier.trim();
 
-    if (!trackingNumber) return null;
-
-    return `${API_URL}/shipments/${encodeURIComponent(
-      trackingNumber
-    )}/label`;
-  };
-
-  // =========================================================
-  // SEARCH SHIPMENT
-  // =========================================================
-  const handleSearch = async (e) => {
-    e.preventDefault();
-
-    const number = searchNumber.trim();
-
-    if (!number) {
-      setError("Please enter Tracking Number or AWD Number.");
+    if (!searchValue) {
+      setError("Please enter a tracking number or AWD number.");
+      setShipment(null);
+      setHistory([]);
+      setSearched(false);
       return;
     }
 
+    setLoading(true);
+    setError("");
+    setShipment(null);
+    setHistory([]);
+    setSearched(false);
+
     try {
-      setLoading(true);
-      setError("");
-      setShipment(null);
+      const response = await trackShipment(searchValue);
+      const data = response?.data || response;
 
-      const response = await trackShipment(number);
+      console.log("FULL TRACKING API RESPONSE:", data);
 
-      const data =
-        response?.shipment ||
-        response?.data?.shipment ||
-        response?.data ||
-        response;
+      const foundShipment =
+        data?.shipment ||
+        data?.data?.shipment ||
+        data?.data;
 
-      if (!data || typeof data !== "object") {
-        throw new Error("Shipment information was not returned.");
+      if (
+        data?.success === false ||
+        !foundShipment ||
+        typeof foundShipment !== "object"
+      ) {
+        throw new Error(
+          data?.message || "Shipment not found."
+        );
       }
 
-      // Use the backend's current status first.
-      // The backend stores the current status in "status".
- // Prefer currentStatus when available.
-// Fall back to status for older shipment records.
-const currentStatus =
-  data.status ||
-  data.currentStatus ||
-  data.latestStatus ||
-  "Shipment Booked";
-   
+      const normalizedHistory =
+        getShipmentHistory(foundShipment);
 
-// Support both history fields without ignoring either array.
-const statusHistory = Array.isArray(data.statusHistory)
-  ? data.statusHistory
-  : [];
+      console.log(
+        "NORMALIZED SHIPMENT HISTORY:",
+        normalizedHistory
+      );
 
-const shipmentHistory = Array.isArray(data.history)
-  ? data.history
-  : [];
-
-const rawHistory = [...statusHistory, ...shipmentHistory];
-
-// Remove duplicate events when both arrays contain the same entries.
-const uniqueHistory = rawHistory.filter((item, index, array) => {
-  const key = JSON.stringify({
-    status: item.status || item.currentStatus || item.event || "",
-    location: item.location || "",
-    timestamp:
-      item.timestamp ||
-      item.eventDateTime ||
-      item.createdAt ||
-      item.date ||
-      "",
-    remarks: item.remarks || item.description || "",
-  });
-
-  return (
-    array.findIndex((entry) => {
-      const entryKey = JSON.stringify({
-        status:
-          entry.status ||
-          entry.currentStatus ||
-          entry.event ||
-          "",
-        location: entry.location || "",
-        timestamp:
-          entry.timestamp ||
-          entry.eventDateTime ||
-          entry.createdAt ||
-          entry.date ||
-          "",
-        remarks: entry.remarks || entry.description || "",
+      setShipment({
+        ...foundShipment,
+        history: normalizedHistory,
       });
 
-      return entryKey === key;
-    }) === index
-  );
-});
-
-const normalizedHistory = normalizeHistory(uniqueHistory);
-
-      // Use the latest history entry as a fallback for details.
-      const latestHistory =
-        normalizedHistory.length > 0
-          ? normalizedHistory[normalizedHistory.length - 1]
-          : {};
-
-      const currentTimestamp =
-        latestHistory.timestamp ||
-        latestHistory.eventDateTime ||
-        latestHistory.createdAt;
-
-      const normalizedShipment = {
-        ...data,
-
-        currentStatus,
-
-        currentLocation:
-          data.currentLocation ||
-          data.location ||
-          latestHistory.location ||
-          "",
-
-        currentDate:
-          data.currentDate ||
-          (currentTimestamp ? formatDate(currentTimestamp) : "") ||
-          latestHistory.date ||
-          "",
-
-        currentTime:
-          data.currentTime ||
-          (currentTimestamp ? formatTime(currentTimestamp) : "") ||
-          latestHistory.time ||
-          "",
-
-        currentRemarks:
-          data.currentRemarks ||
-          data.remarks ||
-          latestHistory.remarks ||
-          "",
-
-        statusHistory: normalizedHistory,
-      };
-
-      console.log("Tracking API response:", response);
-      console.log("Normalized shipment:", normalizedShipment);
-
-      setShipment(normalizedShipment);
+      setHistory(normalizedHistory);
+      setActiveTab("details");
+      setSearched(true);
     } catch (err) {
-      console.error("Track Package Error:", err);
-      setError(err?.message || "Shipment not found.");
+      console.error("Track shipment error:", err);
+
+      setError(
+        err?.message ||
+          "Unable to retrieve shipment details. Please try again."
+      );
+
+      setShipment(null);
+      setHistory([]);
+      setSearched(true);
     } finally {
       setLoading(false);
     }
   };
 
-  // =========================================================
-  // FETCH SHIPPING LABEL PDF
-  // =========================================================
-  const fetchLabelPdf = async (data) => {
-    const trackingNumber = getTrackingNumber(data);
-    const url = getLabelUrl(data);
-
-    if (!trackingNumber || !url) {
-      throw new Error("Tracking Number is missing.");
-    }
-
-    console.log("Shipping Label URL:", url);
-
-    const response = await fetch(url, {
-      method: "GET",
-      headers: { Accept: "application/pdf" },
-    });
-
-    const contentType =
-      response.headers.get("content-type") || "";
-
-    if (!response.ok) {
-      let message = `Failed to generate label. HTTP ${response.status}`;
-
-      if (contentType.includes("application/json")) {
-        try {
-          const result = await response.json();
-          message = result.message || message;
-        } catch {
-          // Keep the original error.
-        }
-      }
-
-      throw new Error(message);
-    }
-
-    if (!contentType.toLowerCase().includes("application/pdf")) {
-      const responseText = await response.text();
-      console.error("Unexpected label response:", responseText);
-
-      throw new Error(
-        "The server did not return a PDF. Check the backend label route."
-      );
-    }
-
-    const blob = await response.blob();
-
-    if (!blob.size) {
-      throw new Error("The generated PDF is empty.");
-    }
-
-    return { blob, trackingNumber };
+  const handleClear = () => {
+    setIdentifier("");
+    setShipment(null);
+    setHistory([]);
+    setError("");
+    setSearched(false);
+    setActiveTab("details");
   };
 
-  // =========================================================
-  // DOWNLOAD SHIPPING LABEL
-  // =========================================================
-  const downloadLabel = async (data) => {
-    let objectUrl;
+  const status = getValue(
+    shipment?.currentStatus,
+    shipment?.status
+  );
 
-    try {
-      setLabelLoading(true);
-      setError("");
+  const location = getValue(
+    shipment?.currentLocation
+  );
 
-      const { blob, trackingNumber } = await fetchLabelPdf(data);
+  const trackingNumber = getValue(
+    shipment?.trackingNumber,
+    shipment?.trackingNo
+  );
 
-      objectUrl = window.URL.createObjectURL(blob);
+  const awdNumber = getValue(
+    shipment?.awdNumber,
+    shipment?.awdNo
+  );
 
-      const link = document.createElement("a");
-      link.href = objectUrl;
-      link.download = `SpeedExpress-${trackingNumber}.pdf`;
+  const sender = shipment?.sender ||
+    shipment?.senderDetails ||
+    {};
 
-      document.body.appendChild(link);
-      link.click();
-      link.remove();
+  const receiver = shipment?.receiver ||
+    shipment?.receiverDetails ||
+    {};
 
-      console.log("Downloaded label for:", trackingNumber);
-    } catch (err) {
-      console.error("Download Label Error:", err);
+  const packageDetails = shipment?.package ||
+    shipment?.packageDetails ||
+    {};
 
-      setError(
-        err instanceof TypeError
-          ? `Cannot connect to the API at ${API_URL}. Check the server and CORS settings.`
-          : err?.message || "Unable to download shipping label."
-      );
-    } finally {
-      if (objectUrl) {
-        window.setTimeout(() => {
-          window.URL.revokeObjectURL(objectUrl);
-        }, 10000);
-      }
+  const currentStep = getStatusStep(status);
+  const isCancelled = currentStep === -1;
 
-      setLabelLoading(false);
-    }
-  };
+  const pickupDate = formatDateTime(
+    shipment?.bookingDate ||
+    shipment?.createdAt ||
+    shipment?.pickupDate
+  ).date;
 
-  // =========================================================
-  // PRINT SHIPPING LABEL
-  // =========================================================
-  const printLabel = async (data) => {
-    let printWindow = null;
-    let objectUrl = null;
+  const latestHistory = history[0];
 
-    try {
-      setPrintLoading(true);
-      setError("");
+  const latestUpdate = latestHistory
+    ? formatDateTime(latestHistory.timestamp)
+    : { date: "—", time: "—" };
 
-      // Open immediately to reduce popup-blocking issues.
-      printWindow = window.open("", "_blank");
-
-      if (!printWindow) {
-        throw new Error(
-          "Please allow pop-ups to print the shipping label."
-        );
-      }
-
-      printWindow.document.write(`
-        <!DOCTYPE html>
-        <html>
-          <head>
-            <title>Speed Express Shipping Label</title>
-          </head>
-          <body style="font-family:Arial,sans-serif;padding:24px">
-            <p>Loading shipping label...</p>
-          </body>
-        </html>
-      `);
-
-      printWindow.document.close();
-
-      const { blob, trackingNumber } = await fetchLabelPdf(data);
-
-      objectUrl = window.URL.createObjectURL(blob);
-
-      printWindow.document.title = `SpeedExpress-${trackingNumber}`;
-      printWindow.location.replace(objectUrl);
-      printWindow.focus();
-
-      // Allow the browser PDF viewer time to load.
-      window.setTimeout(() => {
-        if (objectUrl) {
-          window.URL.revokeObjectURL(objectUrl);
-        }
-      }, 60000);
-
-      objectUrl = null;
-    } catch (err) {
-      console.error("Print Label Error:", err);
-
-      if (printWindow && !printWindow.closed) {
-        printWindow.close();
-      }
-
-      setError(
-        err instanceof TypeError
-          ? `Cannot connect to the API at ${API_URL}. Check the server and CORS settings.`
-          : err?.message || "Unable to print shipping label."
-      );
-    } finally {
-      if (objectUrl) {
-        window.URL.revokeObjectURL(objectUrl);
-      }
-
-      setPrintLoading(false);
-    }
-  };
-
-  // =========================================================
-  // STATUS PROGRESS
-  // =========================================================
-  const currentIndex = shipment
-    ? statuses.indexOf(shipment.currentStatus)
-    : -1;
-
-  const statusClass = (status) => {
-    if (status === "Delivered") {
-      return "admin-status-delivered";
-    }
-
-    if (status === "Out For Delivery") {
-      return "admin-status-out";
-    }
-
-    return "admin-status-transit";
-  };
-
-  // =========================================================
-  // PAGE UI
-  // =========================================================
   return (
-    <div className="admin-page">
-      <div className="admin-page-header">
-        <div>
-          <div className="admin-page-kicker">
-            SHIPMENT MANAGEMENT
-          </div>
+    <main className="tracking-page">
+      <section className="tracking-hero">
+        <div className="tracking-hero-content">
+          <span className="tracking-eyebrow">
+            SPEED EXPRESS • SHIPMENT SERVICES
+          </span>
 
-          <h2>Track Package</h2>
+          <h1>Track Your Shipment</h1>
 
           <p>
-            Search a shipment using Tracking Number or AWD Number.
+            Follow your shipment from booking to final delivery
+            with the latest status updates.
           </p>
-        </div>
 
-        <div className="admin-header-badge">
-          Live Shipment Tracking
-        </div>
-      </div>
-
-      {/* SEARCH FORM */}
-      <div className="admin-track-search-card">
-        <div className="admin-track-search-title">
-          <div className="track-search-icon">🔍</div>
-
-          <div>
-            <h3>Search Shipment</h3>
-            <p>
-              Enter Tracking Number or AWD Number to view shipment
-              details.
-            </p>
-          </div>
-        </div>
-
-        <form
-          className="admin-track-form"
-          onSubmit={handleSearch}
-        >
-          <input
-            type="text"
-            value={searchNumber}
-            onChange={(e) => setSearchNumber(e.target.value)}
-            placeholder="Example: SPEED750295 or AWD123456"
-          />
-
-          <button type="submit" disabled={loading}>
-            {loading ? "Searching..." : "Track Package"}
-          </button>
-        </form>
-      </div>
-
-      {/* ERROR MESSAGE */}
-      {error && (
-        <div className="admin-alert admin-alert-error">
-          <span className="alert-icon">!</span>
-
-          <div>
-            <strong>Shipment Error</strong>
-            <p>{error}</p>
-          </div>
-        </div>
-      )}
-
-      {/* SHIPMENT RESULT */}
-      {shipment && (
-        <div className="admin-track-result">
-          <div className="admin-track-result-header">
-            <div>
-              <span className="track-result-label">
-                SHIPMENT FOUND
+          <form
+            className="tracking-search-form"
+            onSubmit={handleSearch}
+          >
+            <div className="tracking-input-wrap">
+              <span
+                className="tracking-search-icon"
+                aria-hidden="true"
+              >
+                ⌕
               </span>
 
-              <h3>{shipment.trackingNumber || "-"}</h3>
-
-              <p>
-                AWD Number:{" "}
-                <strong>{shipment.awdNumber || "-"}</strong>
-              </p>
+              <input
+                type="text"
+                value={identifier}
+                onChange={(event) =>
+                  setIdentifier(event.target.value)
+                }
+                placeholder="Enter Tracking Number or AWD Number"
+                aria-label="Tracking number or AWD number"
+              />
             </div>
 
-            <div
-              className={`admin-current-status ${statusClass(
-                shipment.currentStatus
-              )}`}
-            >
-              <span className="status-dot" />
-              {shipment.currentStatus || "In Transit"}
-            </div>
-          </div>
-
-          {/* LABEL ACTIONS */}
-          <div
-            style={{
-              display: "flex",
-              gap: 12,
-              marginTop: 20,
-              marginBottom: 25,
-              flexWrap: "wrap",
-            }}
-          >
             <button
-              type="button"
-              disabled={labelLoading || printLoading}
-              onClick={() => downloadLabel(shipment)}
-              style={{
-                padding: "10px 18px",
-                border: "none",
-                borderRadius: 6,
-                cursor:
-                  labelLoading || printLoading
-                    ? "not-allowed"
-                    : "pointer",
-                fontWeight: 600,
-                background: "#0b3d91",
-                color: "#fff",
-                opacity:
-                  labelLoading || printLoading ? 0.7 : 1,
-              }}
+              type="submit"
+              className="tracking-search-button"
+              disabled={loading}
             >
-              {labelLoading
-                ? "Downloading..."
-                : "📄 Download Label"}
+              {loading ? "Searching..." : "Track Shipment"}
             </button>
+          </form>
 
-            <button
-              type="button"
-              disabled={printLoading || labelLoading}
-              onClick={() => printLabel(shipment)}
-              style={{
-                padding: "10px 18px",
-                border: "none",
-                borderRadius: 6,
-                cursor:
-                  printLoading || labelLoading
-                    ? "not-allowed"
-                    : "pointer",
-                fontWeight: 600,
-                background: "#1769aa",
-                color: "#fff",
-                opacity:
-                  printLoading || labelLoading ? 0.7 : 1,
-              }}
-            >
-              {printLoading ? "Opening..." : "🖨️ Print Label"}
-            </button>
+          <div className="tracking-search-hint">
+            <span aria-hidden="true">🔒</span>
+            Enter your shipment tracking number to view its status.
           </div>
+        </div>
+      </section>
 
-          {/* STATUS PROGRESS */}
-          <div className="admin-track-progress">
-            {statuses.map((status, index) => {
-              const completed = index <= currentIndex;
-              const active = index === currentIndex;
+      <section className="tracking-content">
+        {error && (
+          <div className="tracking-alert tracking-alert-error">
+            <strong>Unable to track shipment</strong>
+            <p>{error}</p>
+          </div>
+        )}
 
-              return (
-                <React.Fragment key={status}>
-                  <div
-                    className={`admin-track-step ${
-                      completed ? "completed" : ""
-                    } ${active ? "active" : ""}`}
+        {!shipment && !loading && !error && !searched && (
+          <div className="tracking-empty-state">
+            <div className="tracking-empty-icon">📦</div>
+            <h2>Your shipment journey starts here</h2>
+            <p>
+              Enter your tracking number or AWD number above
+              to view shipment details and status scans.
+            </p>
+          </div>
+        )}
+
+        {loading && (
+          <div className="tracking-loading">
+            <span className="tracking-spinner" />
+            <p>Retrieving your shipment information...</p>
+          </div>
+        )}
+
+        {shipment && (
+          <>
+            <section className="tracking-summary-card">
+              <div className="tracking-summary-top">
+                <div>
+                  <span className="tracking-small-label">
+                    WAYBILL / TRACKING NUMBER
+                  </span>
+                  <h2>{trackingNumber}</h2>
+                  <p className="tracking-awd-line">
+                    AWD Number: {awdNumber}
+                  </p>
+                </div>
+
+                <div className="tracking-status-block">
+                  <span className="tracking-small-label">
+                    CURRENT STATUS
+                  </span>
+                  <span
+                    className={`tracking-status-badge ${
+                      isCancelled
+                        ? "status-cancelled"
+                        : currentStep === 2
+                          ? "status-delivered"
+                          : currentStep === 1
+                            ? "status-transit"
+                            : "status-booked"
+                    }`}
                   >
-                    <div className="admin-track-circle">
-                      {completed ? "✓" : index + 1}
-                    </div>
+                    <span className="tracking-status-dot" />
+                    {status}
+                  </span>
+                </div>
+              </div>
 
-                    <span>{status}</span>
+              <div className="tracking-summary-bottom">
+                <div>
+                  <span className="tracking-small-label">
+                    CURRENT LOCATION
+                  </span>
+                  <strong>{location}</strong>
+                </div>
+
+                <div>
+                  <span className="tracking-small-label">
+                    LAST STATUS UPDATE
+                  </span>
+                  <strong>
+                    {latestUpdate.date}
+                    {latestUpdate.time !== "—"
+                      ? ` • ${latestUpdate.time}`
+                      : ""}
+                  </strong>
+                </div>
+
+                <button
+                  type="button"
+                  className="tracking-clear-button"
+                  onClick={handleClear}
+                >
+                  Track Another
+                </button>
+              </div>
+            </section>
+
+            <section className="tracking-progress-card">
+              <div className="tracking-section-heading">
+                <div>
+                  <span className="tracking-eyebrow">
+                    DELIVERY JOURNEY
+                  </span>
+                  <h2>Shipment Progress</h2>
+                </div>
+
+                <span className="tracking-updated-label">
+                  {history.length} status update
+                  {history.length === 1 ? "" : "s"}
+                </span>
+              </div>
+
+              <div
+                className={`tracking-progress ${
+                  isCancelled ? "progress-cancelled" : ""
+                }`}
+              >
+                {STATUS_STEPS.map((step, index) => {
+                  const completed =
+                    !isCancelled && currentStep >= index;
+                  const active =
+                    !isCancelled && currentStep === index;
+
+                  return (
+                    <div
+                      className={`tracking-progress-step ${
+                        completed ? "completed" : ""
+                      } ${active ? "active" : ""}`}
+                      key={step}
+                    >
+                      <div className="tracking-progress-marker">
+                        {completed ? "✓" : index + 1}
+                      </div>
+
+                      <div className="tracking-progress-title">
+                        {step}
+                      </div>
+
+                      {active && (
+                        <div className="tracking-progress-caption">
+                          Current stage
+                        </div>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+
+              {isCancelled && (
+                <p className="tracking-cancelled-note">
+                  This shipment has been cancelled. Please contact
+                  Speed Express for further information.
+                </p>
+              )}
+            </section>
+
+            <section className="tracking-information-card">
+              <div className="tracking-tabs" role="tablist">
+                <button
+                  type="button"
+                  role="tab"
+                  aria-selected={activeTab === "details"}
+                  className={
+                    activeTab === "details"
+                      ? "tracking-tab active"
+                      : "tracking-tab"
+                  }
+                  onClick={() => setActiveTab("details")}
+                >
+                  <span>▤</span> Shipment Details
+                </button>
+
+                <button
+                  type="button"
+                  role="tab"
+                  aria-selected={activeTab === "scans"}
+                  className={
+                    activeTab === "scans"
+                      ? "tracking-tab active"
+                      : "tracking-tab"
+                  }
+                  onClick={() => setActiveTab("scans")}
+                >
+                  <span>◷</span> Status and Scans
+                  <span className="tracking-tab-count">
+                    {history.length}
+                  </span>
+                </button>
+              </div>
+
+              {activeTab === "details" && (
+                <div className="tracking-details-panel">
+                  <div className="tracking-table-heading">
+                    Shipment Information
                   </div>
 
-                  {index < statuses.length - 1 && (
-                    <div
-                      className={`admin-track-line ${
-                        index < currentIndex ? "completed" : ""
-                      }`}
+                  <div className="tracking-details-grid">
+                    <DetailRow
+                      label="Tracking Number"
+                      value={trackingNumber}
                     />
+                    <DetailRow
+                      label="AWD Number"
+                      value={awdNumber}
+                    />
+                    <DetailRow
+                      label="Pickup Date"
+                      value={pickupDate}
+                    />
+                    <DetailRow
+                      label="From"
+                      value={getValue(
+                        shipment?.origin,
+                        shipment?.from,
+                        shipment?.sender?.city,
+                        shipment?.senderDetails?.city
+                      )}
+                    />
+                    <DetailRow
+                      label="To"
+                      value={getValue(
+                        shipment?.destination,
+                        shipment?.to,
+                        shipment?.receiver?.city,
+                        shipment?.receiverDetails?.city
+                      )}
+                    />
+                    <DetailRow
+                      label="Current Status"
+                      value={status}
+                    />
+                    <DetailRow
+                      label="Current Location"
+                      value={location}
+                    />
+                    <DetailRow
+                      label="Package Type"
+                      value={getValue(
+                        shipment?.packageType,
+                        packageDetails?.packageType,
+                        packageDetails?.type
+                      )}
+                    />
+                    <DetailRow
+                      label="Weight"
+                      value={
+                        shipment?.weight != null
+                          ? `${shipment.weight} KG`
+                          : packageDetails?.weight != null
+                            ? `${packageDetails.weight} KG`
+                            : "—"
+                      }
+                    />
+                    <DetailRow
+                      label="Product Count"
+                      value={getValue(
+                        shipment?.productCount,
+                        packageDetails?.productCount
+                      )}
+                    />
+                    <DetailRow
+                      label="Sender Name"
+                      value={getValue(
+                        sender?.name,
+                        sender?.fullName
+                      )}
+                    />
+                    <DetailRow
+                      label="Sender Phone"
+                      value={getValue(
+                        sender?.phone,
+                        sender?.mobile,
+                        sender?.phoneNumber
+                      )}
+                    />
+                    <DetailRow
+                      label="Sender Address"
+                      value={getValue(
+                        sender?.address,
+                        sender?.fullAddress
+                      )}
+                    />
+                    <DetailRow
+                      label="Receiver Name"
+                      value={getValue(
+                        receiver?.name,
+                        receiver?.fullName
+                      )}
+                    />
+                    <DetailRow
+                      label="Receiver Phone"
+                      value={getValue(
+                        receiver?.phone,
+                        receiver?.mobile,
+                        receiver?.phoneNumber
+                      )}
+                    />
+                    <DetailRow
+                      label="Receiver Address"
+                      value={getValue(
+                        receiver?.address,
+                        receiver?.fullAddress
+                      )}
+                    />
+                    <DetailRow
+                      label="Invoice Number"
+                      value={getValue(
+                        shipment?.invoiceNumber
+                      )}
+                    />
+                    <DetailRow
+                      label="e-Way Bill Number"
+                      value={getValue(
+                        shipment?.eWayBillNumber
+                      )}
+                    />
+                    <DetailRow
+                      label="Latest Remarks"
+                      value={getValue(
+                        latestHistory?.remarks,
+                        shipment?.remarks
+                      )}
+                    />
+                  </div>
+                </div>
+              )}
+
+              {activeTab === "scans" && (
+                <div className="tracking-scans-panel">
+                  <div className="tracking-table-heading">
+                    Status and Scans
+                  </div>
+
+                  {history.length > 0 ? (
+                    <div className="tracking-history-table-wrap">
+                      <table className="tracking-history-table">
+                        <thead>
+                          <tr>
+                            <th>Location</th>
+                            <th>Details</th>
+                            <th>Date</th>
+                            <th>Time (IST)</th>
+                          </tr>
+                        </thead>
+
+                        <tbody>
+                          {history.map((event, index) => {
+                            const dateTime =
+                              formatDateTime(event.timestamp);
+
+                            return (
+                              <tr
+                                key={
+                                  event._id ||
+                                  `${event.timestamp}-${index}`
+                                }
+                              >
+                                <td>
+                                  <span className="tracking-location-cell">
+                                    <span className="tracking-scan-dot" />
+                                    {event.location}
+                                  </span>
+                                </td>
+                                <td>
+                                  <strong>
+                                    {event.status}
+                                  </strong>
+
+                                  {event.remarks && (
+                                    <p className="tracking-scan-remarks">
+                                      {event.remarks}
+                                    </p>
+                                  )}
+                                </td>
+                                <td>{dateTime.date}</td>
+                                <td>{dateTime.time}</td>
+                              </tr>
+                            );
+                          })}
+                        </tbody>
+                      </table>
+
+                      <div className="tracking-table-footer">
+                        All displayed times use India Standard Time (IST).
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="tracking-no-history">
+                      <div className="tracking-empty-icon">◷</div>
+                      <h3>No status scans available</h3>
+                      <p>
+                        Status updates will appear here when the
+                        shipment history is saved in the system.
+                      </p>
+                    </div>
                   )}
-                </React.Fragment>
-              );
-            })}
-          </div>
-
-          {/* CURRENT STATUS */}
-          <section className="admin-track-section">
-            <div className="admin-section-heading">
-              <h3>Current Shipment Status</h3>
-              <p>Latest tracking information</p>
-            </div>
-
-            <div className="admin-detail-table-wrapper">
-              <table className="admin-detail-table">
-                <tbody>
-                  <tr>
-                    <th>Status</th>
-                    <td>{shipment.currentStatus || "-"}</td>
-                  </tr>
-
-                  <tr>
-                    <th>Location</th>
-                    <td>{shipment.currentLocation || "-"}</td>
-                  </tr>
-
-                  <tr>
-                    <th>Date</th>
-                    <td>{shipment.currentDate || "-"}</td>
-                  </tr>
-
-                  <tr>
-                    <th>Time</th>
-                    <td>{shipment.currentTime || "-"}</td>
-                  </tr>
-
-                  <tr>
-                    <th>Remarks</th>
-                    <td>
-                      {shipment.currentRemarks || "No remarks"}
-                    </td>
-                  </tr>
-                </tbody>
-              </table>
-            </div>
-          </section>
-
-          {/* SHIPMENT IDENTIFICATION */}
-          <section className="admin-track-section">
-            <div className="admin-section-heading">
-              <h3>Shipment Identification</h3>
-              <p>Basic shipment reference details</p>
-            </div>
-
-            <div className="admin-detail-table-wrapper">
-              <table className="admin-detail-table">
-                <tbody>
-                  <tr>
-                    <th>Tracking Number</th>
-                    <td>{shipment.trackingNumber || "-"}</td>
-                  </tr>
-
-                  <tr>
-                    <th>AWD Number</th>
-                    <td>{shipment.awdNumber || "-"}</td>
-                  </tr>
-                </tbody>
-              </table>
-            </div>
-          </section>
-
-          {/* SENDER AND RECEIVER */}
-          <section className="admin-track-section">
-            <div className="admin-section-heading">
-              <h3>Sender &amp; Receiver</h3>
-              <p>Shipment contact information</p>
-            </div>
-
-            <div className="admin-detail-table-wrapper">
-              <table className="admin-detail-table">
-                <thead>
-                  <tr>
-                    <th>Details</th>
-                    <th>Sender</th>
-                    <th>Receiver</th>
-                  </tr>
-                </thead>
-
-                <tbody>
-                  <tr>
-                    <th>Name</th>
-                    <td>{shipment.senderName || "-"}</td>
-                    <td>{shipment.receiverName || "-"}</td>
-                  </tr>
-
-                  <tr>
-                    <th>Phone</th>
-                    <td>{shipment.senderPhone || "-"}</td>
-                    <td>{shipment.receiverPhone || "-"}</td>
-                  </tr>
-
-                  <tr>
-                    <th>Address</th>
-                    <td>{shipment.senderAddress || "-"}</td>
-                    <td>{shipment.receiverAddress || "-"}</td>
-                  </tr>
-                </tbody>
-              </table>
-            </div>
-          </section>
-
-          {/* PACKAGE DETAILS */}
-          <section className="admin-track-section">
-            <div className="admin-section-heading">
-              <h3>Package Details</h3>
-              <p>Shipment package information</p>
-            </div>
-
-            <div className="admin-detail-table-wrapper">
-              <table className="admin-detail-table">
-                <tbody>
-                  <tr>
-                    <th>Package Type</th>
-                    <td>{shipment.packageType || "-"}</td>
-                  </tr>
-
-                  <tr>
-                    <th>Weight</th>
-                    <td>
-                      {shipment.weight !== undefined &&
-                      shipment.weight !== null &&
-                      shipment.weight !== ""
-                        ? `${shipment.weight} KG`
-                        : "-"}
-                    </td>
-                  </tr>
-                </tbody>
-              </table>
-            </div>
-          </section>
-
-          {/* SHIPMENT HISTORY */}
-          <section className="admin-track-section">
-            <div className="admin-section-heading">
-              <h3>Shipment Status History</h3>
-              <p>Complete shipment movement history</p>
-            </div>
-
-            {shipment.statusHistory.length > 0 ? (
-              <div className="admin-detail-table-wrapper">
-                <table className="admin-detail-table admin-history-table">
-                  <thead>
-                    <tr>
-                      <th>Status</th>
-                      <th>Location</th>
-                      <th>Date</th>
-                      <th>Time</th>
-                      <th>Remarks</th>
-                    </tr>
-                  </thead>
-
-                  <tbody>
-                    {shipment.statusHistory.map(
-                      (history, index) => (
-                        <tr key={history._id || index}>
-                          <td>
-                            <span
-                              className={`history-status ${
-                                history.status === "Delivered"
-                                  ? "history-delivered"
-                                  : history.status ===
-                                      "Out For Delivery"
-                                    ? "history-out"
-                                    : "history-transit"
-                              }`}
-                            >
-                              {history.status || "-"}
-                            </span>
-                          </td>
-
-                          <td>{history.location || "-"}</td>
-                          <td>{history.date || "-"}</td>
-                          <td>{history.time || "-"}</td>
-                          <td>{history.remarks || "-"}</td>
-                        </tr>
-                      )
-                    )}
-                  </tbody>
-                </table>
-              </div>
-            ) : (
-              <div className="admin-no-history">
-                No shipment history available.
-              </div>
-            )}
-          </section>
-        </div>
-      )}
-
-      {/* EMPTY STATE */}
-      {!shipment && !loading && !error && (
-        <div className="admin-track-empty">
-          <div className="admin-track-empty-icon">📦</div>
-
-          <h3>Track Your Shipment</h3>
-
-          <p>
-            Enter a Tracking Number or AWD Number above to view
-            complete shipment information.
-          </p>
-        </div>
-      )}
-    </div>
+                </div>
+              )}
+            </section>
+          </>
+        )}
+      </section>
+    </main>
   );
 }
-
- 
