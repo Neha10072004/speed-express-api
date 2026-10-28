@@ -1,5 +1,6 @@
 
 
+
 const mongoose = require("mongoose");
 
 // --------------------------------------------------
@@ -96,6 +97,28 @@ const shipmentSchema = new mongoose.Schema(
       trim: true,
       uppercase: true,
     },
+
+    // OPTIONAL BOOKING DATE
+    // Format: YYYY-MM-DD
+    // Can be null when cleared by the admin.
+
+    bookingDate: {
+      type: String,
+      default: null,
+      trim: true,
+    },
+
+    // OPTIONAL BOOKING TIME
+    // Format: HH:mm (24-hour format)
+    // Can be null when cleared by the admin.
+
+    bookingTime: {
+      type: String,
+      default: null,
+      trim: true,
+    },
+
+    // AWD IS OPTIONAL
 
     awdNumber: {
       type: String,
@@ -205,14 +228,14 @@ const shipmentSchema = new mongoose.Schema(
       required: true,
     },
 
-    // Compatibility field for existing frontend code.
+    // COMPATIBILITY FIELD FOR EXISTING FRONTEND
 
     currentStatus: {
-  type: String,
-  enum: ALLOWED_STATUSES,
-  default: "Shipment Booked",
-  trim: true,
-},
+      type: String,
+      enum: ALLOWED_STATUSES,
+      default: "Shipment Booked",
+      trim: true,
+    },
 
     currentLocation: {
       type: String,
@@ -229,32 +252,9 @@ const shipmentSchema = new mongoose.Schema(
     // TRACKING HISTORY
 
     history: {
-  type: [
-    new mongoose.Schema(
-      {
-        status: {
-          type: String,
-          required: true,
-        },
-        location: {
-          type: String,
-          default: "",
-        },
-        remarks: {
-          type: String,
-          default: "",
-        },
-        timestamp: {
-          type: Date,
-          default: Date.now,
-          required: true,
-        },
-      },
-      { _id: true }
-    ),
-  ],
-  default: [],
-},
+      type: [shipmentHistorySchema],
+      default: [],
+    },
 
     // PROOF OF DELIVERY
 
@@ -275,20 +275,20 @@ const shipmentSchema = new mongoose.Schema(
 
 shipmentSchema.pre("save", function (next) {
   try {
-    // Normalize older status values and keep both fields aligned.
+    // Normalize legacy status values and synchronize fields.
     const normalizedStatus = normalizeStatus(this.status);
 
     this.status = normalizedStatus;
     this.currentStatus = normalizedStatus;
 
-    // Avoid duplicate history when the controller already
-    // appended the status event.
+    // If the controller already appended a history event,
+    // do not append another one automatically.
     if (this.$locals.skipAutomaticHistory) {
       this.$locals.skipAutomaticHistory = false;
       return next();
     }
 
-    // Add the initial booking history.
+    // Initial history for newly created shipments.
     if (this.isNew) {
       this.history.push({
         status: this.status,
@@ -302,7 +302,8 @@ shipmentSchema.pre("save", function (next) {
       this.isModified("currentLocation") ||
       this.isModified("remarks")
     ) {
-      // Add history when shipment status details change.
+      // Record changes to shipment status details.
+      // Booking date/time changes alone do not enter this branch.
       this.history.push({
         status: this.status,
         location: this.currentLocation || "",
@@ -324,4 +325,3 @@ shipmentSchema.pre("save", function (next) {
 module.exports =
   mongoose.models.Shipment ||
   mongoose.model("Shipment", shipmentSchema);
-

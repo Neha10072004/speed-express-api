@@ -1,333 +1,352 @@
 
+const mongoose = require("mongoose");
+const { GridFSBucket, ObjectId } = require("mongodb");
+const { Readable } = require("stream");
+
 const Shipment = require("../models/Shipment");
 const generateShippingLabel = require("../utils/generateShippingLabel");
-const { saveProof, deleteProof } = require("../utils/proofStorage");
+
+const PROOF_BUCKET_NAME = "shipmentProofs";
 
 /* =========================================================
-   HELPERS
+INDIA DATE/TIME HELPERS
 ========================================================= */
 
-const clean = (value) =>
-  value === undefined || value === null
-    ? ""
-    : String(value).trim();
+// Returns actual current India date/time.
+const getIndiaBookingDateTime = () => {
+const parts = new Intl.DateTimeFormat("en-GB", {
+timeZone: "Asia/Kolkata",
+year: "numeric",
+month: "2-digit",
+day: "2-digit",
+hour: "2-digit",
+minute: "2-digit",
+hourCycle: "h23",
+}).formatToParts(new Date());
 
-const normalizeIdentifier = (value) => clean(value).toUpperCase();
+const values = {};
 
-const findShipmentByIdentifier = async (identifier) => {
-  const number = normalizeIdentifier(identifier);
+for (const part of parts) {
+if (part.type !== "literal") {
+values[part.type] = part.value;
+}
+}
 
-  if (!number) return null;
-
-  return Shipment.findOne({
-    $or: [
-      { trackingNumber: number },
-      { awdNumber: number },
-    ],
-  });
+return {
+bookingDate: `${values.year}-${values.month}-${values.day}`,
+bookingTime: `${values.hour}:${values.minute}`,
+};
 };
 
-const identifierExists = async (identifier) => {
-  const number = normalizeIdentifier(identifier);
+const hasOwn = (object, field) =>
+Object.prototype.hasOwnProperty.call(object, field);
 
-  if (!number) return false;
+const normalizeOptionalString = (value) => {
+if (value === null || value === undefined) return null;
 
-  return Boolean(
-    await Shipment.exists({
-      $or: [
-        { trackingNumber: number },
-        { awdNumber: number },
-      ],
-    })
-  );
+const normalized = String(value).trim();
+return normalized === "" ? null : normalized;
 };
 
-const generateTrackingNumber = async () => {
-  const MAX_ATTEMPTS = 100;
+const validateBookingDate = (value) =>
+typeof value === "string" &&
+/^\d{4}-\d{2}-\d{2}$/.test(value) &&
+(() => {
+const [year, month, day] = value.split("-").map(Number);
+const date = new Date(Date.UTC(year, month - 1, day));
 
-  for (let attempt = 0; attempt < MAX_ATTEMPTS; attempt += 1) {
-    const candidate =
-      "SPEED" + Math.floor(100000 + Math.random() * 900000);
+return (
+date.getUTCFullYear() === year &&
+date.getUTCMonth() === month - 1 &&
+date.getUTCDate() === day
+);
+})();
 
-    // Check both identifier fields to avoid collisions.
-    if (!(await identifierExists(candidate))) {
-      return candidate;
-    }
-  }
+const validateBookingTime = (value) =>
+typeof value === "string" &&
+/^(?:[01]\d|2[0-3]):[0-5]\d$/.test(value);
 
-  throw new Error(
-    "Unable to generate a unique tracking number. Please try again."
-  );
+/* =========================================================
+GRIDFS PROOF HELPERS
+========================================================= */
+
+const getProofBucket = () => {
+const db = mongoose.connection.db;
+
+if (!db) {
+throw new Error("MongoDB connection is not ready.");
+}
+
+return new GridFSBucket(db, {
+bucketName: PROOF_BUCKET_NAME,
+});
 };
 
-const duplicateKeyResponse = (error, res) => {
-  const keyPattern = error.keyPattern || {};
-  const keyValue = error.keyValue || {};
-  const duplicateField = Object.keys(keyPattern)[0] || "unknown";
-  const duplicateValue = keyValue[duplicateField];
+const saveProof = async (file, trackingNumber) => {
+if (!file || !file.buffer) {
+throw new Error(
+"Uploaded proof is missing file data. Check upload middleware."
+);
+}
 
-  console.error("MongoDB duplicate-key details:", {
-    index: error.index,
-    keyPattern,
-    keyValue,
-    message: error.message,
-  });
+const bucket = getProofBucket();
 
-  if (duplicateField === "trackingNumber") {
-    return res.status(409).json({
-      success: false,
-      field: "trackingNumber",
-      value: duplicateValue,
-      message: `Tracking number "${duplicateValue || ""}" already exists. Please enter a different tracking number.`,
-    });
-  }
+const filename = `${Date.now()}-${String(
+file.originalname || "shipment-proof"
+).replace(/[^a-zA-Z0-9._-]/g, "_")}`;
 
-  if (duplicateField === "awdNumber") {
-    return res.status(409).json({
-      success: false,
-      field: "awdNumber",
-      value: duplicateValue,
-      message:
-        "MongoDB has a unique AWD-number index. AWD should be optional and non-unique. Remove the obsolete AWD unique index in MongoDB Atlas.",
-    });
-  }
+return new Promise((resolve, reject) => {
+const uploadStream = bucket.openUploadStream(filename, {
+contentType: file.mimetype || "application/octet-stream",
+metadata: {
+trackingNumber,
+originalName: file.originalname || filename,
+},
+});
 
-  return res.status(409).json({
-    success: false,
-    field: duplicateField,
-    value: duplicateValue,
-    message:
-      `Duplicate value detected for database field "${duplicateField}". Check the server log for the MongoDB index details.`,
-  });
+uploadStream.once("error", reject);
+
+uploadStream.once("finish", () => {
+resolve({
+fileId: uploadStream.id,
+filename,
+});
+});
+
+Readable.from(file.buffer).pipe(uploadStream);
+});
 };
 
-const validateOptionalNumber = (
-  value,
-  fieldName,
-  { integer = false } = {}
-) => {
-  if (value === undefined || value === null || value === "") {
-    return { value: null, error: null };
-  }
+const deleteProof = async (fileId) => {
+if (!fileId) return;
 
-  const number = Number(value);
-
-  if (
-    !Number.isFinite(number) ||
-    number < 0 ||
-    (integer && !Number.isInteger(number))
-  ) {
-    return {
-      value: null,
-      error: `${fieldName} must be a valid non-negative ${
-        integer ? "whole number" : "number"
-      }.`,
-    };
-  }
-
-  return { value: number, error: null };
+const id = new ObjectId(String(fileId));
+await getProofBucket().delete(id);
 };
 
 /* =========================================================
-   CREATE SHIPMENT
-   POST /api/shipments
+SHIPMENT LOOKUP
+========================================================= */
+
+const findShipmentByIdentifier = async (identifier) => {
+return Shipment.findOne({
+$or: [
+{ trackingNumber: identifier },
+{ awdNumber: identifier },
+],
+});
+};
+
+/* =========================================================
+TRACKING NUMBER GENERATOR
+========================================================= */
+
+const generateTrackingNumber = async () => {
+for (let attempt = 0; attempt < 50; attempt++) {
+const trackingNumber =
+"SPEED" + Math.floor(100000 + Math.random() * 900000);
+
+const exists = await Shipment.exists({ trackingNumber });
+
+if (!exists) {
+return trackingNumber;
+}
+}
+
+throw new Error("Unable to generate a unique tracking number.");
+};
+
+/* =========================================================
+CREATE SHIPMENT
+POST /api/shipments
 ========================================================= */
 
 const createShipment = async (req, res) => {
-  try {
-    const {
-      bookingType = "Offline",
-      trackingNumber,
-      awdNumber,
-      senderName,
-      senderPhone,
-      senderAddress,
-      receiverName,
-      receiverPhone,
-      receiverAddress,
-      packageType = "Parcel",
-      weight,
-      productCount,
-      invoiceNumber = "",
-      eWayBillNumber = "",
-      status = "Shipment Booked",
-      currentLocation = "",
-      remarks = "",
-    } = req.body;
+try {
+const {
+bookingType = "Offline",
+trackingNumber,
+awdNumber,
+senderName,
+senderPhone,
+senderAddress,
+receiverName,
+receiverPhone,
+receiverAddress,
+packageType = "Parcel",
+weight,
+productCount,
+invoiceNumber,
+eWayBillNumber,
+status = "Shipment Booked",
+currentLocation,
+remarks,
+} = req.body;
 
-    if (!["Online", "Offline"].includes(bookingType)) {
-      return res.status(400).json({
-        success: false,
-        message: "Booking type must be Online or Offline.",
-      });
-    }
+if (
+!senderName ||
+!senderPhone ||
+!senderAddress ||
+!receiverName ||
+!receiverPhone ||
+!receiverAddress
+) {
+return res.status(400).json({
+success: false,
+message:
+"Sender name, phone, address and receiver name, phone, address are required.",
+});
+}
 
-    const requiredFields = {
-      senderName,
-      senderPhone,
-      senderAddress,
-      receiverName,
-      receiverPhone,
-      receiverAddress,
-    };
+if (!["Online", "Offline"].includes(bookingType)) {
+return res.status(400).json({
+success: false,
+message: "Booking type must be Online or Offline.",
+});
+}
 
-    const missingFields = Object.entries(requiredFields)
-      .filter(([, value]) => !clean(value))
-      .map(([field]) => field);
+let finalTrackingNumber = trackingNumber
+? String(trackingNumber).trim()
+: "";
 
-    if (missingFields.length) {
-      return res.status(400).json({
-        success: false,
-        message: "Please complete all required sender and receiver fields.",
-        fields: missingFields,
-      });
-    }
+if (bookingType === "Online" && !finalTrackingNumber) {
+finalTrackingNumber = await generateTrackingNumber();
+}
 
-    let finalTrackingNumber = normalizeIdentifier(trackingNumber);
+if (!finalTrackingNumber) {
+return res.status(400).json({
+success: false,
+message: "Tracking number is required for offline bookings.",
+});
+}
 
-    if (bookingType === "Online" && !finalTrackingNumber) {
-      finalTrackingNumber = await generateTrackingNumber();
-    }
+const duplicate = await Shipment.findOne({
+trackingNumber: finalTrackingNumber,
+});
 
-    if (bookingType === "Offline" && !finalTrackingNumber) {
-      return res.status(400).json({
-        success: false,
-        field: "trackingNumber",
-        message: "Tracking number is required for offline bookings.",
-      });
-    }
+if (duplicate) {
+return res.status(409).json({
+success: false,
+message: "This tracking number already exists.",
+});
+}
 
-    // AWD is OPTIONAL. Empty values are not checked for duplicates.
-    const finalAwdNumber = normalizeIdentifier(awdNumber);
+// An omitted field gets the current India value.
+// An explicitly blank field stays null.
+const indiaNow = getIndiaBookingDateTime();
 
-    // Do not allow a supplied AWD to conflict with another shipment's
-    // tracking number or AWD number.
-    if (finalAwdNumber) {
-      if (finalAwdNumber === finalTrackingNumber) {
-        return res.status(409).json({
-          success: false,
-          field: "awdNumber",
-          message: "AWD number and tracking number must be different.",
-        });
-      }
+const bookingDate = hasOwn(req.body, "bookingDate")
+? normalizeOptionalString(req.body.bookingDate)
+: indiaNow.bookingDate;
 
-      const awdDuplicate = await identifierExists(finalAwdNumber);
+const bookingTime = hasOwn(req.body, "bookingTime")
+? normalizeOptionalString(req.body.bookingTime)
+: indiaNow.bookingTime;
 
-      if (awdDuplicate) {
-        return res.status(409).json({
-          success: false,
-          field: "awdNumber",
-          value: finalAwdNumber,
-          message: `AWD number "${finalAwdNumber}" is already assigned to a shipment.`,
-        });
-      }
-    }
+if (bookingDate !== null && !validateBookingDate(bookingDate)) {
+return res.status(400).json({
+success: false,
+message: "Booking date must be a valid YYYY-MM-DD date.",
+});
+}
 
-    const trackingDuplicate = await Shipment.exists({
-      trackingNumber: finalTrackingNumber,
-    });
+if (bookingTime !== null && !validateBookingTime(bookingTime)) {
+return res.status(400).json({
+success: false,
+message: "Booking time must be in HH:mm format.",
+});
+}
 
-    if (trackingDuplicate) {
-      return res.status(409).json({
-        success: false,
-        field: "trackingNumber",
-        value: finalTrackingNumber,
-        message: `Tracking number "${finalTrackingNumber}" already exists. Please enter a different tracking number.`,
-      });
-    }
-
-    // If the supplied tracking number matches an existing AWD, it
-    // would make tracking lookups ambiguous. Reject it clearly.
-    const trackingMatchesAwd = await Shipment.exists({
-      awdNumber: finalTrackingNumber,
-    });
-
-    if (trackingMatchesAwd) {
-      return res.status(409).json({
-        success: false,
-        field: "trackingNumber",
-        value: finalTrackingNumber,
-        message:
-          "This tracking number is already being used as an AWD number. Please enter a different tracking number.",
-      });
-    }
-
-    const checkedWeight = validateOptionalNumber(weight, "Weight");
-    if (checkedWeight.error) {
-      return res.status(400).json({
-        success: false,
-        field: "weight",
-        message: checkedWeight.error,
-      });
-    }
-
-    const checkedProductCount = validateOptionalNumber(
-      productCount,
-      "Product count",
-      { integer: true }
-    );
-
-    if (checkedProductCount.error) {
-      return res.status(400).json({
-        success: false,
-        field: "productCount",
-        message: checkedProductCount.error,
-      });
-    }
-
-    const shipmentData = {
-      bookingType,
-      trackingNumber: finalTrackingNumber,
-      senderName: clean(senderName),
-      senderPhone: clean(senderPhone),
-      senderAddress: clean(senderAddress),
-      receiverName: clean(receiverName),
-      receiverPhone: clean(receiverPhone),
-      receiverAddress: clean(receiverAddress),
-      packageType: clean(packageType) || "Parcel",
-      weight: checkedWeight.value,
-      productCount: checkedProductCount.value,
-      invoiceNumber: clean(invoiceNumber),
-      eWayBillNumber: clean(eWayBillNumber),
-      status: clean(status) || "Shipment Booked",
-      currentLocation: clean(currentLocation),
-      remarks: clean(remarks),
-    };
-
-    // Do not store an empty AWD string.
-    if (finalAwdNumber) {
-      shipmentData.awdNumber = finalAwdNumber;
-    }
-
-    const shipment = await Shipment.create(shipmentData);
-
-    return res.status(201).json({
-      success: true,
-      message: "Shipment booked successfully.",
-      shipment,
-    });
-  } catch (error) {
-    console.error("Create shipment error:", error);
-
-    if (error.code === 11000) {
-      return duplicateKeyResponse(error, res);
-    }
-
-    if (error.name === "ValidationError") {
-      return res.status(400).json({
-        success: false,
-        message: error.message,
-      });
-    }
-
-    return res.status(500).json({
-      success: false,
-      message: "Failed to create shipment.",
-      error: error.message,
-    });
-  }
+const shipmentData = {
+bookingType,
+trackingNumber: finalTrackingNumber,
+senderName: String(senderName).trim(),
+senderPhone: String(senderPhone).trim(),
+senderAddress: String(senderAddress).trim(),
+receiverName: String(receiverName).trim(),
+receiverPhone: String(receiverPhone).trim(),
+receiverAddress: String(receiverAddress).trim(),
+packageType,
+status,
+currentLocation: currentLocation || "",
+remarks: remarks || "",
+bookingDate,
+bookingTime,
 };
 
+if (awdNumber !== undefined) {
+shipmentData.awdNumber = normalizeOptionalString(awdNumber);
+}
+
+if (weight !== undefined && weight !== null && weight !== "") {
+const parsedWeight = Number(weight);
+
+if (!Number.isFinite(parsedWeight) || parsedWeight < 0) {
+return res.status(400).json({
+success: false,
+message: "Weight must be a valid non-negative number.",
+});
+}
+
+shipmentData.weight = parsedWeight;
+}
+
+if (
+productCount !== undefined &&
+productCount !== null &&
+productCount !== ""
+) {
+const parsedCount = Number(productCount);
+
+if (!Number.isInteger(parsedCount) || parsedCount < 0) {
+return res.status(400).json({
+success: false,
+message: "Product count must be a non-negative integer.",
+});
+}
+
+shipmentData.productCount = parsedCount;
+}
+
+if (invoiceNumber !== undefined) {
+shipmentData.invoiceNumber = invoiceNumber;
+}
+
+if (eWayBillNumber !== undefined) {
+shipmentData.eWayBillNumber = eWayBillNumber;
+}
+
+const shipment = await Shipment.create(shipmentData);
+
+return res.status(201).json({
+success: true,
+message: "Shipment booked successfully.",
+shipment,
+});
+} catch (error) {
+console.error("Create shipment error:", error);
+
+if (error.code === 11000) {
+return res.status(409).json({
+success: false,
+message: "A shipment with this number already exists.",
+});
+}
+
+if (error.name === "ValidationError") {
+return res.status(400).json({
+success: false,
+message: error.message,
+});
+}
+
+return res.status(500).json({
+success: false,
+message: "Failed to create shipment.",
+error: error.message,
+});
+}
+}
 /* =========================================================
    GET ALL SHIPMENTS
    GET /api/shipments

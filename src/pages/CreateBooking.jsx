@@ -1,6 +1,7 @@
 import React, { useState } from "react";
- 
 
+// Use VITE_API_URL from your frontend .env file when available.
+// Example: VITE_API_URL=https://api.speedexp.in/api
 const API_BASE_URL = (
   import.meta.env.VITE_API_URL || "https://api.speedexp.in/api"
 ).replace(/\/+$/, "");
@@ -17,33 +18,202 @@ const STATUS_OPTIONS = [
   "Vehicle Breakdown",
 ];
 
-const INITIAL_FORM = {
+// Get the current date and time using the Asia/Kolkata time zone.
+// Input values use the browser-friendly formats YYYY-MM-DD and HH:mm.
+const getIndiaDateTime = () => {
+  const parts = new Intl.DateTimeFormat("en-GB", {
+    timeZone: "Asia/Kolkata",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+    hourCycle: "h23",
+  }).formatToParts(new Date());
+
+  const values = Object.fromEntries(
+    parts.map(({ type, value }) => [type, value])
+  );
+
+  return {
+    bookingDate: `${values.year}-${values.month}-${values.day}`,
+    bookingTime: `${values.hour}:${values.minute}`,
+  };
+};
+
+// New forms start with the actual current India date and time.
+// The admin can edit either field or clear both fields.
+const createInitialForm = () => ({
   bookingType: "Offline",
+  ...getIndiaDateTime(),
+
   trackingNumber: "",
   awdNumber: "",
+
   senderName: "",
   senderPhone: "",
   senderAddress: "",
+
   receiverName: "",
   receiverPhone: "",
   receiverAddress: "",
+
   packageType: "Parcel",
   weight: "",
   productCount: "1",
+
   invoiceNumber: "",
   eWayBillNumber: "",
+
   status: "Shipment Booked",
   currentLocation: "",
   remarks: "",
+});
+
+const inputStyle = {
+  width: "100%",
+  boxSizing: "border-box",
+  padding: "11px 12px",
+  border: "1px solid #cbd5e1",
+  borderRadius: "7px",
+  fontSize: "14px",
+  backgroundColor: "#ffffff",
+  color: "#0f172a",
 };
 
+const labelStyle = {
+  display: "block",
+  marginBottom: "6px",
+  fontWeight: 600,
+  fontSize: "13px",
+  color: "#334155",
+};
+
+const fieldStyle = {
+  minWidth: 0,
+  marginBottom: "16px",
+};
+
+const sectionStyle = {
+  padding: "20px",
+  marginBottom: "20px",
+  border: "1px solid #e2e8f0",
+  borderRadius: "12px",
+  backgroundColor: "#ffffff",
+  boxShadow: "0 3px 12px rgba(15, 23, 42, 0.035)",
+};
+
+const gridStyle = {
+  display: "grid",
+  gridTemplateColumns: "repeat(auto-fit, minmax(min(100%, 220px), 1fr))",
+  gap: "0 18px",
+};
+
+const buttonStyle = {
+  padding: "12px 22px",
+  border: "none",
+  borderRadius: "8px",
+  fontSize: "14px",
+  fontWeight: 600,
+  cursor: "pointer",
+  transition: "opacity 0.2s ease, transform 0.2s ease",
+};
+
+function Field({
+  label,
+  name,
+  value,
+  onChange,
+  type = "text",
+  ...props
+}) {
+  return (
+    <div style={fieldStyle}>
+      <label htmlFor={name} style={labelStyle}>
+        {label}
+      </label>
+
+      <input
+        id={name}
+        name={name}
+        type={type}
+        value={value}
+        onChange={onChange}
+        style={inputStyle}
+        {...props}
+      />
+    </div>
+  );
+}
+
+function SelectField({ label, name, value, onChange, children, ...props }) {
+  return (
+    <div style={fieldStyle}>
+      <label htmlFor={name} style={labelStyle}>
+        {label}
+      </label>
+
+      <select
+        id={name}
+        name={name}
+        value={value}
+        onChange={onChange}
+        style={inputStyle}
+        {...props}
+      >
+        {children}
+      </select>
+    </div>
+  );
+}
+
+function Section({ title, children }) {
+  return (
+    <section style={sectionStyle}>
+      <h2
+        style={{
+          margin: "0 0 20px",
+          color: "#0b3d91",
+          fontSize: "18px",
+          fontWeight: 750,
+        }}
+      >
+        {title}
+      </h2>
+
+      <div style={gridStyle}>{children}</div>
+    </section>
+  );
+}
+
+function Notice({ kind = "error", children }) {
+  const isSuccess = kind === "success";
+
+  return (
+    <div
+      role={isSuccess ? "status" : "alert"}
+      style={{
+        padding: "13px 16px",
+        marginBottom: "20px",
+        color: isSuccess ? "#166534" : "#991b1b",
+        backgroundColor: isSuccess ? "#dcfce7" : "#fee2e2",
+        border: `1px solid ${isSuccess ? "#bbf7d0" : "#fecaca"}`,
+        borderRadius: "9px",
+        lineHeight: 1.6,
+      }}
+    >
+      {children}
+    </div>
+  );
+}
+
 export default function CreateBooking() {
-  const [form, setForm] = useState(INITIAL_FORM);
+  const [form, setForm] = useState(createInitialForm);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const [success, setSuccess] = useState(null);
 
-  // IMPORTANT: Store the selected VALUE, never the HTML element.
+  // Update the form when any input changes.
   const handleChange = (event) => {
     const { name, value } = event.target;
 
@@ -55,14 +225,16 @@ export default function CreateBooking() {
     setError("");
   };
 
+  // Online tracking numbers are generated by this frontend.
+  // Offline tracking numbers must be entered by the admin.
   const handleBookingTypeChange = (event) => {
-    const selectedType = event.target.value;
+    const bookingType = event.target.value;
 
     setForm((previousForm) => ({
       ...previousForm,
-      bookingType: selectedType,
+      bookingType,
       trackingNumber:
-        selectedType === "Online" ? "" : previousForm.trackingNumber,
+        bookingType === "Online" ? "" : previousForm.trackingNumber,
     }));
 
     setError("");
@@ -73,6 +245,7 @@ export default function CreateBooking() {
     return `SPEED${number}`;
   };
 
+  // Validate all required fields before sending the request.
   const validateForm = () => {
     if (
       form.bookingType === "Offline" &&
@@ -82,17 +255,17 @@ export default function CreateBooking() {
     }
 
     const requiredFields = [
-      ["senderName", "Sender name"],
-      ["senderPhone", "Sender phone"],
-      ["senderAddress", "Sender address"],
-      ["receiverName", "Receiver name"],
-      ["receiverPhone", "Receiver phone"],
-      ["receiverAddress", "Receiver address"],
+      ["senderName", "sender name"],
+      ["senderPhone", "sender phone"],
+      ["senderAddress", "sender address"],
+      ["receiverName", "receiver name"],
+      ["receiverPhone", "receiver phone"],
+      ["receiverAddress", "receiver address"],
     ];
 
     for (const [field, label] of requiredFields) {
       if (!form[field].trim()) {
-        return `Please enter ${label.toLowerCase()}.`;
+        return `Please enter ${label}.`;
       }
     }
 
@@ -110,9 +283,43 @@ export default function CreateBooking() {
       return "Product count must be a whole number of at least 1.";
     }
 
+    if (
+      form.bookingDate &&
+      !/^\d{4}-\d{2}-\d{2}$/.test(form.bookingDate)
+    ) {
+      return "Please enter a valid booking date.";
+    }
+
+    if (
+      form.bookingTime &&
+      !/^([01]\d|2[0-3]):[0-5]\d$/.test(form.bookingTime)
+    ) {
+      return "Please enter a valid booking time.";
+    }
+
     return "";
   };
 
+  // Clear only the booking date/time fields.
+  // The rest of the booking form remains unchanged.
+  const handleClearBookingDateTime = () => {
+    setForm((previousForm) => ({
+      ...previousForm,
+      bookingDate: "",
+      bookingTime: "",
+    }));
+
+    setError("");
+  };
+
+  // Reset the whole form and restore the current India date/time.
+  const handleReset = () => {
+    setForm(createInitialForm());
+    setError("");
+    setSuccess(null);
+  };
+
+  // Create a shipment through POST /api/shipments.
   const handleSubmit = async (event) => {
     event.preventDefault();
 
@@ -136,32 +343,40 @@ export default function CreateBooking() {
           ? generateTrackingNumber()
           : form.trackingNumber.trim().toUpperCase();
 
-      // Construct a plain JSON object. Never include event.target,
-      // HTMLOptionElement, or other DOM elements in this payload.
+      // Empty date/time values are intentionally sent as null.
+      // The backend model/controller must save these fields.
       const payload = {
         bookingType: form.bookingType,
         trackingNumber,
+
+        bookingDate: form.bookingDate || null,
+        bookingTime: form.bookingTime || null,
+
         senderName: form.senderName.trim(),
         senderPhone: form.senderPhone.trim(),
         senderAddress: form.senderAddress.trim(),
+
         receiverName: form.receiverName.trim(),
         receiverPhone: form.receiverPhone.trim(),
         receiverAddress: form.receiverAddress.trim(),
+
         packageType: form.packageType,
         productCount: Number(form.productCount),
+
+        invoiceNumber: form.invoiceNumber.trim(),
+        eWayBillNumber: form.eWayBillNumber.trim(),
+
         status: form.status,
         currentLocation: form.currentLocation.trim(),
         remarks: form.remarks.trim(),
-        invoiceNumber: form.invoiceNumber.trim(),
-        eWayBillNumber: form.eWayBillNumber.trim(),
       };
 
-      // AWD is optional. Do not send it if it is blank.
+      // AWD is optional. Do not send it when blank.
       if (form.awdNumber.trim()) {
         payload.awdNumber = form.awdNumber.trim().toUpperCase();
       }
 
-      // Weight is optional. Omit it when the field is empty.
+      // Weight is optional. Do not send it when blank.
       if (form.weight !== "") {
         payload.weight = Number(form.weight);
       }
@@ -191,17 +406,20 @@ export default function CreateBooking() {
         responseData;
 
       setSuccess({
-        trackingNumber:
-          savedShipment.trackingNumber || trackingNumber,
+        trackingNumber: savedShipment.trackingNumber || trackingNumber,
         awdNumber: savedShipment.awdNumber || "",
         bookingType: form.bookingType,
+        bookingDate: savedShipment.bookingDate ?? payload.bookingDate,
+        bookingTime: savedShipment.bookingTime ?? payload.bookingTime,
       });
 
-      setForm(INITIAL_FORM);
-    } catch (err) {
-      console.error("Create booking error:", err);
+      // Reset after success. The next form gets a fresh India date/time.
+      setForm(createInitialForm());
+    } catch (submitError) {
+      console.error("Create booking error:", submitError);
+
       setError(
-        err.message ||
+        submitError.message ||
           "Unable to create booking. Please check your connection and try again."
       );
     } finally {
@@ -209,354 +427,310 @@ export default function CreateBooking() {
     }
   };
 
-  const handleReset = () => {
-    setForm(INITIAL_FORM);
-    setError("");
-    setSuccess(null);
-  };
-
   return (
-    <main className="create-booking-page">
+    <div className="create-booking-page" style={{ minWidth: 0 }}>
+      {/* Modern blue-gradient page header */}
       <header className="booking-page-header">
-        <div>
-          <span className="booking-eyebrow">SHIPMENT MANAGEMENT</span>
-          <h1>Create New Booking</h1>
+        <div className="booking-header-content">
+          <nav className="booking-breadcrumb" aria-label="Breadcrumb">
+            <span>Admin Dashboard</span>
+            <span aria-hidden="true">/</span>
+            <span aria-current="page">New Booking</span>
+          </nav>
+
+          <h1>Create Shipment Booking</h1>
           <p>
-            Enter shipment details to register and manage a Speed Express
-            delivery.
+            Enter shipment information and save the booking. Manage sender,
+            receiver, package, and delivery details in one place.
           </p>
         </div>
 
-        <div className="booking-header-icon" aria-hidden="true">
-          <span>✈</span>
+        <div
+          className="booking-header-icon"
+          aria-hidden="true"
+          title="Create shipment"
+        >
+          📦
         </div>
       </header>
 
-      {error && (
-        <div className="booking-alert booking-alert-error" role="alert">
-          <strong>Booking failed</strong>
-          <p>{error}</p>
-        </div>
-      )}
+      {error && <Notice kind="error">{error}</Notice>}
 
       {success && (
-        <div className="booking-alert booking-alert-success" role="status">
-          <strong>Booking created successfully!</strong>
-          <p>
-            Tracking Number: <b>{success.trackingNumber}</b>
+        <Notice kind="success">
+          <h3 style={{ margin: "0 0 10px", fontSize: "17px" }}>
+            Booking created successfully!
+          </h3>
+
+          <p style={{ margin: "4px 0" }}>
+            <strong>Tracking Number:</strong> {success.trackingNumber}
           </p>
+
           {success.awdNumber && (
-            <p>
-              AWD Number: <b>{success.awdNumber}</b>
+            <p style={{ margin: "4px 0" }}>
+              <strong>AWD Number:</strong> {success.awdNumber}
             </p>
           )}
-          <p>Booking Type: {success.bookingType}</p>
-          <p>Save the tracking number to track this shipment.</p>
-        </div>
+
+          <p style={{ margin: "4px 0" }}>
+            <strong>Booking Date:</strong>{" "}
+            {success.bookingDate || "Not specified"}
+          </p>
+
+          <p style={{ margin: "4px 0" }}>
+            <strong>Booking Time:</strong>{" "}
+            {success.bookingTime || "Not specified"}
+          </p>
+        </Notice>
       )}
 
-      <form onSubmit={handleSubmit} className="booking-form">
-        <section className="booking-card">
-          <div className="booking-section-heading">
-            <span className="booking-step">01</span>
-            <div>
-              <h2>Booking Information</h2>
-              <p>Choose how this shipment is being registered.</p>
-            </div>
+      <form onSubmit={handleSubmit}>
+        <Section title="Booking Information">
+          <SelectField
+            label="Booking Type *"
+            name="bookingType"
+            value={form.bookingType}
+            onChange={handleBookingTypeChange}
+            required
+          >
+            <option value="Offline">Offline</option>
+            <option value="Online">Online</option>
+          </SelectField>
+
+          <Field
+            label="Tracking Number"
+            name="trackingNumber"
+            value={form.trackingNumber}
+            onChange={handleChange}
+            placeholder={
+              form.bookingType === "Online"
+                ? "Generated automatically"
+                : "Enter tracking number"
+            }
+            required={form.bookingType === "Offline"}
+            disabled={form.bookingType === "Online"}
+          />
+
+          <Field
+            label="AWD Number (Optional)"
+            name="awdNumber"
+            value={form.awdNumber}
+            onChange={handleChange}
+            placeholder="Enter AWD number"
+          />
+
+          <Field
+            label="Booking Date (Optional)"
+            name="bookingDate"
+            type="date"
+            value={form.bookingDate}
+            onChange={handleChange}
+          />
+
+          <Field
+            label="Booking Time (Optional)"
+            name="bookingTime"
+            type="time"
+            value={form.bookingTime}
+            onChange={handleChange}
+          />
+
+          <div style={{ ...fieldStyle, alignSelf: "end" }}>
+            <button
+              type="button"
+              onClick={handleClearBookingDateTime}
+              style={{
+                ...buttonStyle,
+                color: "#0b3d91",
+                backgroundColor: "#eaf4ff",
+                border: "1px solid #bfdbfe",
+              }}
+            >
+              Clear Date &amp; Time
+            </button>
           </div>
+        </Section>
 
-          <div className="booking-grid">
-            <div className="booking-field">
-              <label htmlFor="bookingType">Booking Type *</label>
-              <select
-                id="bookingType"
-                name="bookingType"
-                value={form.bookingType}
-                onChange={handleBookingTypeChange}
-                required
-              >
-                <option value="Offline">Offline Booking</option>
-                <option value="Online">Online Booking</option>
-              </select>
-            </div>
+        <Section title="Sender Information">
+          <Field
+            label="Sender Name *"
+            name="senderName"
+            value={form.senderName}
+            onChange={handleChange}
+            autoComplete="name"
+            required
+          />
 
-            <div className="booking-field">
-              <label htmlFor="trackingNumber">
-                Tracking Number {form.bookingType === "Offline" ? "*" : ""}
-              </label>
-              <input
-                id="trackingNumber"
-                name="trackingNumber"
-                type="text"
-                value={form.trackingNumber}
-                onChange={handleChange}
-                placeholder={
-                  form.bookingType === "Offline"
-                    ? "Enter manual tracking number"
-                    : "Generated automatically"
-                }
-                disabled={form.bookingType === "Online"}
-                required={form.bookingType === "Offline"}
-              />
-              <small>
-                {form.bookingType === "Online"
-                  ? "A SPEED tracking number will be generated when you submit."
-                  : "Enter a unique tracking number for this offline shipment."}
-              </small>
-            </div>
+          <Field
+            label="Sender Phone *"
+            name="senderPhone"
+            value={form.senderPhone}
+            onChange={handleChange}
+            type="tel"
+            autoComplete="tel"
+            required
+          />
 
-            <div className="booking-field">
-              <label htmlFor="awdNumber">AWD Number (Optional)</label>
-              <input
-                id="awdNumber"
-                name="awdNumber"
-                type="text"
-                value={form.awdNumber}
-                onChange={handleChange}
-                placeholder="Enter AWD number if available"
-              />
-            </div>
+          <Field
+            label="Sender Address *"
+            name="senderAddress"
+            value={form.senderAddress}
+            onChange={handleChange}
+            autoComplete="street-address"
+            required
+          />
+        </Section>
 
-            <div className="booking-field">
-              <label htmlFor="status">Shipment Status *</label>
-              <select
-                id="status"
-                name="status"
-                value={form.status}
-                onChange={handleChange}
-                required
-              >
-                {STATUS_OPTIONS.map((status) => (
-                  <option key={status} value={status}>
-                    {status}
-                  </option>
-                ))}
-              </select>
-            </div>
-          </div>
-        </section>
+        <Section title="Receiver Information">
+          <Field
+            label="Receiver Name *"
+            name="receiverName"
+            value={form.receiverName}
+            onChange={handleChange}
+            required
+          />
 
-        <section className="booking-card">
-          <div className="booking-section-heading">
-            <span className="booking-step">02</span>
-            <div>
-              <h2>Sender Information</h2>
-              <p>Enter the person or business sending the package.</p>
-            </div>
-          </div>
+          <Field
+            label="Receiver Phone *"
+            name="receiverPhone"
+            value={form.receiverPhone}
+            onChange={handleChange}
+            type="tel"
+            required
+          />
 
-          <div className="booking-grid">
-            <div className="booking-field">
-              <label htmlFor="senderName">Sender Name *</label>
-              <input
-                id="senderName"
-                name="senderName"
-                value={form.senderName}
-                onChange={handleChange}
-                placeholder="Enter sender's full name"
-                required
-              />
-            </div>
+          <Field
+            label="Receiver Address *"
+            name="receiverAddress"
+            value={form.receiverAddress}
+            onChange={handleChange}
+            required
+          />
+        </Section>
 
-            <div className="booking-field">
-              <label htmlFor="senderPhone">Sender Phone *</label>
-              <input
-                id="senderPhone"
-                name="senderPhone"
-                type="tel"
-                value={form.senderPhone}
-                onChange={handleChange}
-                placeholder="Enter sender's phone number"
-                required
-              />
-            </div>
+        <Section title="Package Information">
+          <SelectField
+            label="Package Type"
+            name="packageType"
+            value={form.packageType}
+            onChange={handleChange}
+          >
+            <option value="Parcel">Parcel</option>
+            <option value="Document">Document</option>
+            <option value="Corporate Gifting">Corporate Gifting</option>
+            <option value="Other">Other</option>
+          </SelectField>
 
-            <div className="booking-field booking-field-full">
-              <label htmlFor="senderAddress">Sender Address *</label>
-              <textarea
-                id="senderAddress"
-                name="senderAddress"
-                value={form.senderAddress}
-                onChange={handleChange}
-                placeholder="Enter complete pickup address"
-                rows="3"
-                required
-              />
-            </div>
-          </div>
-        </section>
+          <Field
+            label="Weight (Optional)"
+            name="weight"
+            type="number"
+            value={form.weight}
+            onChange={handleChange}
+            min="0"
+            step="any"
+            placeholder="Enter weight"
+          />
 
-        <section className="booking-card">
-          <div className="booking-section-heading">
-            <span className="booking-step">03</span>
-            <div>
-              <h2>Receiver Information</h2>
-              <p>Enter the destination and recipient details.</p>
-            </div>
-          </div>
+          <Field
+            label="Product Count *"
+            name="productCount"
+            type="number"
+            value={form.productCount}
+            onChange={handleChange}
+            min="1"
+            step="1"
+            required
+          />
 
-          <div className="booking-grid">
-            <div className="booking-field">
-              <label htmlFor="receiverName">Receiver Name *</label>
-              <input
-                id="receiverName"
-                name="receiverName"
-                value={form.receiverName}
-                onChange={handleChange}
-                placeholder="Enter receiver's full name"
-                required
-              />
-            </div>
+          <Field
+            label="Invoice Number (Optional)"
+            name="invoiceNumber"
+            value={form.invoiceNumber}
+            onChange={handleChange}
+          />
 
-            <div className="booking-field">
-              <label htmlFor="receiverPhone">Receiver Phone *</label>
-              <input
-                id="receiverPhone"
-                name="receiverPhone"
-                type="tel"
-                value={form.receiverPhone}
-                onChange={handleChange}
-                placeholder="Enter receiver's phone number"
-                required
-              />
-            </div>
+          <Field
+            label="E-Way Bill Number (Optional)"
+            name="eWayBillNumber"
+            value={form.eWayBillNumber}
+            onChange={handleChange}
+          />
+        </Section>
 
-            <div className="booking-field booking-field-full">
-              <label htmlFor="receiverAddress">Receiver Address *</label>
-              <textarea
-                id="receiverAddress"
-                name="receiverAddress"
-                value={form.receiverAddress}
-                onChange={handleChange}
-                placeholder="Enter complete delivery address"
-                rows="3"
-                required
-              />
-            </div>
-          </div>
-        </section>
+        <Section title="Shipment Status">
+          <SelectField
+            label="Initial Status *"
+            name="status"
+            value={form.status}
+            onChange={handleChange}
+            required
+          >
+            {STATUS_OPTIONS.map((status) => (
+              <option key={status} value={status}>
+                {status}
+              </option>
+            ))}
+          </SelectField>
 
-        <section className="booking-card">
-          <div className="booking-section-heading">
-            <span className="booking-step">04</span>
-            <div>
-              <h2>Package Details</h2>
-              <p>Add the package information and shipment references.</p>
-            </div>
-          </div>
+          <Field
+            label="Current Location (Optional)"
+            name="currentLocation"
+            value={form.currentLocation}
+            onChange={handleChange}
+            placeholder="Enter current location"
+          />
 
-          <div className="booking-grid">
-            <div className="booking-field">
-              <label htmlFor="packageType">Package Type *</label>
-              <select
-                id="packageType"
-                name="packageType"
-                value={form.packageType}
-                onChange={handleChange}
-                required
-              >
-                <option value="Parcel">Parcel</option>
-                <option value="Document">Document</option>
-                <option value="Box">Box</option>
-                <option value="Corporate Gift">Corporate Gift</option>
-                <option value="Other">Other</option>
-              </select>
-            </div>
+          <Field
+            label="Remarks (Optional)"
+            name="remarks"
+            value={form.remarks}
+            onChange={handleChange}
+            placeholder="Add shipment remarks"
+          />
+        </Section>
 
-            <div className="booking-field">
-              <label htmlFor="weight">Weight (kg)</label>
-              <input
-                id="weight"
-                name="weight"
-                type="number"
-                min="0"
-                step="0.01"
-                value={form.weight}
-                onChange={handleChange}
-                placeholder="Enter weight (optional)"
-              />
-            </div>
-
-            <div className="booking-field">
-              <label htmlFor="productCount">Number of Packages *</label>
-              <input
-                id="productCount"
-                name="productCount"
-                type="number"
-                min="1"
-                step="1"
-                value={form.productCount}
-                onChange={handleChange}
-                required
-              />
-            </div>
-
-            <div className="booking-field">
-              <label htmlFor="invoiceNumber">Invoice Number</label>
-              <input
-                id="invoiceNumber"
-                name="invoiceNumber"
-                value={form.invoiceNumber}
-                onChange={handleChange}
-                placeholder="Optional invoice reference"
-              />
-            </div>
-
-            <div className="booking-field">
-              <label htmlFor="eWayBillNumber">E-Way Bill Number</label>
-              <input
-                id="eWayBillNumber"
-                name="eWayBillNumber"
-                value={form.eWayBillNumber}
-                onChange={handleChange}
-                placeholder="Optional e-way bill reference"
-              />
-            </div>
-
-            <div className="booking-field">
-              <label htmlFor="currentLocation">Current Location</label>
-              <input
-                id="currentLocation"
-                name="currentLocation"
-                value={form.currentLocation}
-                onChange={handleChange}
-                placeholder="Enter current shipment location"
-              />
-            </div>
-
-            <div className="booking-field booking-field-full">
-              <label htmlFor="remarks">Remarks</label>
-              <textarea
-                id="remarks"
-                name="remarks"
-                value={form.remarks}
-                onChange={handleChange}
-                placeholder="Add special instructions or remarks (optional)"
-                rows="3"
-              />
-            </div>
-          </div>
-        </section>
-
-        <div className="booking-form-actions">
+        <div
+          style={{
+            display: "flex",
+            flexWrap: "wrap",
+            justifyContent: "flex-end",
+            gap: "12px",
+            marginBottom: "28px",
+          }}
+        >
           <button
             type="button"
-            className="booking-reset-button"
             onClick={handleReset}
             disabled={loading}
+            style={{
+              ...buttonStyle,
+              color: "#334155",
+              backgroundColor: "#e2e8f0",
+              opacity: loading ? 0.65 : 1,
+            }}
           >
             Reset Form
           </button>
 
           <button
             type="submit"
-            className="booking-submit-button"
             disabled={loading}
+            style={{
+              ...buttonStyle,
+              color: "#ffffff",
+              background: loading
+                ? "#64748b"
+                : "linear-gradient(115deg, #0b3d91, #00a7df)",
+              boxShadow: "0 5px 14px rgba(11, 61, 145, 0.18)",
+              opacity: loading ? 0.8 : 1,
+              cursor: loading ? "not-allowed" : "pointer",
+            }}
           >
             {loading ? "Creating Booking..." : "Create Booking"}
           </button>
         </div>
       </form>
-    </main>
+    </div>
   );
 }
