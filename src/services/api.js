@@ -1,7 +1,9 @@
+
 const API_URL = (
   import.meta.env.VITE_API_URL ||
   "https://api.speedexp.in/api"
 ).replace(/\/+$/, "");
+
 /* =====================================
    COMMON HELPERS
 ===================================== */
@@ -77,6 +79,14 @@ const fetchApi = async (url, options = {}) => {
 };
 
 /* =====================================
+   BACKEND HEALTH CHECK
+===================================== */
+
+export const checkBackendHealth = async () => {
+  return fetchApi(`${API_URL}/health`);
+};
+
+/* =====================================
    CREATE SHIPMENT
 ===================================== */
 
@@ -142,14 +152,6 @@ export const trackShipment = async (trackingNumber) => {
 /* =====================================
    UPDATE SHIPMENT STATUS
    ONE OPTIONAL ATTACHMENT
-
-   Expected statusData:
-   {
-     status: "In Transit to Next Hub",
-     location: "Pune Hub",
-     remarks: "Shipment dispatched",
-     proofFile: File | null
-   }
 ===================================== */
 
 export const updateShipmentStatus = async (
@@ -282,7 +284,6 @@ export const downloadShippingLabel = async (trackingNumber) => {
     link.click();
     link.remove();
 
-    // Allow the browser to start the download before cleanup.
     window.setTimeout(() => {
       window.URL.revokeObjectURL(blobUrl);
     }, 5000);
@@ -306,7 +307,6 @@ export const printShippingLabel = async (trackingNumber) => {
   let cleanupTimer = null;
 
   try {
-    // Open synchronously to reduce popup blocking.
     printWindow = window.open("about:blank", "_blank");
 
     if (!printWindow) {
@@ -325,7 +325,6 @@ export const printShippingLabel = async (trackingNumber) => {
 
     printWindow.location.replace(blobUrl);
 
-    // Keep the PDF URL alive while the print tab is open.
     const activeWindow = printWindow;
     const activeBlobUrl = blobUrl;
 
