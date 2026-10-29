@@ -9,344 +9,393 @@ const generateShippingLabel = require("../utils/generateShippingLabel");
 const PROOF_BUCKET_NAME = "shipmentProofs";
 
 /* =========================================================
-INDIA DATE/TIME HELPERS
+   INDIA DATE/TIME HELPERS
 ========================================================= */
 
-// Returns actual current India date/time.
 const getIndiaBookingDateTime = () => {
-const parts = new Intl.DateTimeFormat("en-GB", {
-timeZone: "Asia/Kolkata",
-year: "numeric",
-month: "2-digit",
-day: "2-digit",
-hour: "2-digit",
-minute: "2-digit",
-hourCycle: "h23",
-}).formatToParts(new Date());
+  const parts = new Intl.DateTimeFormat("en-GB", {
+    timeZone: "Asia/Kolkata",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+    hourCycle: "h23",
+  }).formatToParts(new Date());
 
-const values = {};
+  const values = {};
 
-for (const part of parts) {
-if (part.type !== "literal") {
-values[part.type] = part.value;
-}
-}
+  for (const part of parts) {
+    if (part.type !== "literal") {
+      values[part.type] = part.value;
+    }
+  }
 
-return {
-bookingDate: `${values.year}-${values.month}-${values.day}`,
-bookingTime: `${values.hour}:${values.minute}`,
-};
+  return {
+    bookingDate: `${values.year}-${values.month}-${values.day}`,
+    bookingTime: `${values.hour}:${values.minute}`,
+  };
 };
 
 const hasOwn = (object, field) =>
-Object.prototype.hasOwnProperty.call(object, field);
+  Object.prototype.hasOwnProperty.call(object, field);
+
+/* =========================================================
+   MISSING HELPER FUNCTIONS — TRACKING AND VALIDATION FIX
+========================================================= */
+
+// Normalize tracking/AWD identifiers so spaces and letter case
+// do not matter.
+const normalizeIdentifier = (value) => {
+  if (value === null || value === undefined) return "";
+
+  return String(value).trim().replace(/\s+/g, "").toUpperCase();
+};
+
+// Convert optional text to a trimmed string.
+const clean = (value) => {
+  if (value === null || value === undefined) return "";
+
+  return String(value).trim();
+};
+
+// Validate optional non-negative numeric fields.
+// Returns undefined for blank input and null for invalid input.
+const validateOptionalNumber = (value, fieldName) => {
+  if (
+    value === undefined ||
+    value === null ||
+    String(value).trim() === ""
+  ) {
+    return undefined;
+  }
+
+  const parsed = Number(value);
+
+  if (!Number.isFinite(parsed) || parsed < 0) {
+    return null;
+  }
+
+  return parsed;
+};
 
 const normalizeOptionalString = (value) => {
-if (value === null || value === undefined) return null;
+  if (value === null || value === undefined) return null;
 
-const normalized = String(value).trim();
-return normalized === "" ? null : normalized;
+  const normalized = String(value).trim();
+
+  return normalized === "" ? null : normalized;
 };
 
 const validateBookingDate = (value) =>
-typeof value === "string" &&
-/^\d{4}-\d{2}-\d{2}$/.test(value) &&
-(() => {
-const [year, month, day] = value.split("-").map(Number);
-const date = new Date(Date.UTC(year, month - 1, day));
+  typeof value === "string" &&
+  /^\d{4}-\d{2}-\d{2}$/.test(value) &&
+  (() => {
+    const [year, month, day] = value.split("-").map(Number);
+    const date = new Date(Date.UTC(year, month - 1, day));
 
-return (
-date.getUTCFullYear() === year &&
-date.getUTCMonth() === month - 1 &&
-date.getUTCDate() === day
-);
-})();
+    return (
+      date.getUTCFullYear() === year &&
+      date.getUTCMonth() === month - 1 &&
+      date.getUTCDate() === day
+    );
+  })();
 
 const validateBookingTime = (value) =>
-typeof value === "string" &&
-/^(?:[01]\d|2[0-3]):[0-5]\d$/.test(value);
+  typeof value === "string" &&
+  /^(?:[01]\d|2[0-3]):[0-5]\d$/.test(value);
 
 /* =========================================================
-GRIDFS PROOF HELPERS
+   GRIDFS PROOF HELPERS
 ========================================================= */
 
 const getProofBucket = () => {
-const db = mongoose.connection.db;
+  const db = mongoose.connection.db;
 
-if (!db) {
-throw new Error("MongoDB connection is not ready.");
-}
+  if (!db) {
+    throw new Error("MongoDB connection is not ready.");
+  }
 
-return new GridFSBucket(db, {
-bucketName: PROOF_BUCKET_NAME,
-});
+  return new GridFSBucket(db, {
+    bucketName: PROOF_BUCKET_NAME,
+  });
 };
 
 const saveProof = async (file, trackingNumber) => {
-if (!file || !file.buffer) {
-throw new Error(
-"Uploaded proof is missing file data. Check upload middleware."
-);
-}
+  if (!file || !file.buffer) {
+    throw new Error(
+      "Uploaded proof is missing file data. Check upload middleware."
+    );
+  }
 
-const bucket = getProofBucket();
+  const bucket = getProofBucket();
 
-const filename = `${Date.now()}-${String(
-file.originalname || "shipment-proof"
-).replace(/[^a-zA-Z0-9._-]/g, "_")}`;
+  const filename = `${Date.now()}-${String(
+    file.originalname || "shipment-proof"
+  ).replace(/[^a-zA-Z0-9._-]/g, "_")}`;
 
-return new Promise((resolve, reject) => {
-const uploadStream = bucket.openUploadStream(filename, {
-contentType: file.mimetype || "application/octet-stream",
-metadata: {
-trackingNumber,
-originalName: file.originalname || filename,
-},
-});
+  return new Promise((resolve, reject) => {
+    const uploadStream = bucket.openUploadStream(filename, {
+      contentType: file.mimetype || "application/octet-stream",
+      metadata: {
+        trackingNumber,
+        originalName: file.originalname || filename,
+      },
+    });
 
-uploadStream.once("error", reject);
+    uploadStream.once("error", reject);
 
-uploadStream.once("finish", () => {
-resolve({
-fileId: uploadStream.id,
-filename,
-});
-});
+    uploadStream.once("finish", () => {
+      resolve({
+        fileId: uploadStream.id,
+        filename,
+      });
+    });
 
-Readable.from(file.buffer).pipe(uploadStream);
-});
+    Readable.from(file.buffer).pipe(uploadStream);
+  });
 };
 
 const deleteProof = async (fileId) => {
-if (!fileId) return;
+  if (!fileId) return;
 
-const id = new ObjectId(String(fileId));
-await getProofBucket().delete(id);
+  const id = new ObjectId(String(fileId));
+
+  await getProofBucket().delete(id);
 };
 
 /* =========================================================
-SHIPMENT LOOKUP
+   SHIPMENT LOOKUP
 ========================================================= */
 
 const findShipmentByIdentifier = async (identifier) => {
-return Shipment.findOne({
-$or: [
-{ trackingNumber: identifier },
-{ awdNumber: identifier },
-],
-});
+  const normalizedIdentifier = normalizeIdentifier(identifier);
+
+  if (!normalizedIdentifier) {
+    return null;
+  }
+
+  // Use normalized values to search tracking and AWD numbers.
+  // Existing database values are expected to be stored normalized.
+  return Shipment.findOne({
+    $or: [
+      { trackingNumber: normalizedIdentifier },
+      { awdNumber: normalizedIdentifier },
+    ],
+  });
 };
 
 /* =========================================================
-TRACKING NUMBER GENERATOR
+   TRACKING NUMBER GENERATOR
 ========================================================= */
 
 const generateTrackingNumber = async () => {
-for (let attempt = 0; attempt < 50; attempt++) {
-const trackingNumber =
-"SPEED" + Math.floor(100000 + Math.random() * 900000);
+  for (let attempt = 0; attempt < 50; attempt++) {
+    const trackingNumber =
+      "SPEED" + Math.floor(100000 + Math.random() * 900000);
 
-const exists = await Shipment.exists({ trackingNumber });
+    const exists = await Shipment.exists({ trackingNumber });
 
-if (!exists) {
-return trackingNumber;
-}
-}
+    if (!exists) {
+      return trackingNumber;
+    }
+  }
 
-throw new Error("Unable to generate a unique tracking number.");
+  throw new Error("Unable to generate a unique tracking number.");
 };
 
 /* =========================================================
-CREATE SHIPMENT
-POST /api/shipments
+   CREATE SHIPMENT
+   POST /api/shipments
 ========================================================= */
 
 const createShipment = async (req, res) => {
-try {
-const {
-bookingType = "Offline",
-trackingNumber,
-awdNumber,
-senderName,
-senderPhone,
-senderAddress,
-receiverName,
-receiverPhone,
-receiverAddress,
-packageType = "Parcel",
-weight,
-productCount,
-invoiceNumber,
-eWayBillNumber,
-status = "Shipment Booked",
-currentLocation,
-remarks,
-} = req.body;
+  try {
+    const {
+      bookingType = "Offline",
+      trackingNumber,
+      awdNumber,
+      senderName,
+      senderPhone,
+      senderAddress,
+      receiverName,
+      receiverPhone,
+      receiverAddress,
+      packageType = "Parcel",
+      weight,
+      productCount,
+      invoiceNumber,
+      eWayBillNumber,
+      status = "Shipment Booked",
+      currentLocation,
+      remarks,
+    } = req.body;
 
-if (
-!senderName ||
-!senderPhone ||
-!senderAddress ||
-!receiverName ||
-!receiverPhone ||
-!receiverAddress
-) {
-return res.status(400).json({
-success: false,
-message:
-"Sender name, phone, address and receiver name, phone, address are required.",
-});
-}
+    if (
+      !senderName ||
+      !senderPhone ||
+      !senderAddress ||
+      !receiverName ||
+      !receiverPhone ||
+      !receiverAddress
+    ) {
+      return res.status(400).json({
+        success: false,
+        message:
+          "Sender name, phone, address and receiver name, phone, address are required.",
+      });
+    }
 
-if (!["Online", "Offline"].includes(bookingType)) {
-return res.status(400).json({
-success: false,
-message: "Booking type must be Online or Offline.",
-});
-}
+    if (!["Online", "Offline"].includes(bookingType)) {
+      return res.status(400).json({
+        success: false,
+        message: "Booking type must be Online or Offline.",
+      });
+    }
 
-let finalTrackingNumber = trackingNumber
-? String(trackingNumber).trim()
-: "";
+    let finalTrackingNumber = trackingNumber
+      ? normalizeIdentifier(trackingNumber)
+      : "";
 
-if (bookingType === "Online" && !finalTrackingNumber) {
-finalTrackingNumber = await generateTrackingNumber();
-}
+    if (bookingType === "Online" && !finalTrackingNumber) {
+      finalTrackingNumber = await generateTrackingNumber();
+    }
 
-if (!finalTrackingNumber) {
-return res.status(400).json({
-success: false,
-message: "Tracking number is required for offline bookings.",
-});
-}
+    if (!finalTrackingNumber) {
+      return res.status(400).json({
+        success: false,
+        message: "Tracking number is required for offline bookings.",
+      });
+    }
 
-const duplicate = await Shipment.findOne({
-trackingNumber: finalTrackingNumber,
-});
+    const duplicate = await Shipment.findOne({
+      trackingNumber: finalTrackingNumber,
+    });
 
-if (duplicate) {
-return res.status(409).json({
-success: false,
-message: "This tracking number already exists.",
-});
-}
+    if (duplicate) {
+      return res.status(409).json({
+        success: false,
+        message: "This tracking number already exists.",
+      });
+    }
 
-// An omitted field gets the current India value.
-// An explicitly blank field stays null.
-const indiaNow = getIndiaBookingDateTime();
+    // If a booking date/time is omitted, use current India date/time.
+    // If explicitly blank, store null.
+    const indiaNow = getIndiaBookingDateTime();
 
-const bookingDate = hasOwn(req.body, "bookingDate")
-? normalizeOptionalString(req.body.bookingDate)
-: indiaNow.bookingDate;
+    const bookingDate = hasOwn(req.body, "bookingDate")
+      ? normalizeOptionalString(req.body.bookingDate)
+      : indiaNow.bookingDate;
 
-const bookingTime = hasOwn(req.body, "bookingTime")
-? normalizeOptionalString(req.body.bookingTime)
-: indiaNow.bookingTime;
+    const bookingTime = hasOwn(req.body, "bookingTime")
+      ? normalizeOptionalString(req.body.bookingTime)
+      : indiaNow.bookingTime;
 
-if (bookingDate !== null && !validateBookingDate(bookingDate)) {
-return res.status(400).json({
-success: false,
-message: "Booking date must be a valid YYYY-MM-DD date.",
-});
-}
+    if (bookingDate !== null && !validateBookingDate(bookingDate)) {
+      return res.status(400).json({
+        success: false,
+        message: "Booking date must be a valid YYYY-MM-DD date.",
+      });
+    }
 
-if (bookingTime !== null && !validateBookingTime(bookingTime)) {
-return res.status(400).json({
-success: false,
-message: "Booking time must be in HH:mm format.",
-});
-}
+    if (bookingTime !== null && !validateBookingTime(bookingTime)) {
+      return res.status(400).json({
+        success: false,
+        message: "Booking time must be in HH:mm format.",
+      });
+    }
 
-const shipmentData = {
-bookingType,
-trackingNumber: finalTrackingNumber,
-senderName: String(senderName).trim(),
-senderPhone: String(senderPhone).trim(),
-senderAddress: String(senderAddress).trim(),
-receiverName: String(receiverName).trim(),
-receiverPhone: String(receiverPhone).trim(),
-receiverAddress: String(receiverAddress).trim(),
-packageType,
-status,
-currentLocation: currentLocation || "",
-remarks: remarks || "",
-bookingDate,
-bookingTime,
+    const shipmentData = {
+      bookingType,
+      trackingNumber: finalTrackingNumber,
+      senderName: String(senderName).trim(),
+      senderPhone: String(senderPhone).trim(),
+      senderAddress: String(senderAddress).trim(),
+      receiverName: String(receiverName).trim(),
+      receiverPhone: String(receiverPhone).trim(),
+      receiverAddress: String(receiverAddress).trim(),
+      packageType,
+      status,
+      currentLocation: currentLocation || "",
+      remarks: remarks || "",
+      bookingDate,
+      bookingTime,
+    };
+
+    if (awdNumber !== undefined) {
+      shipmentData.awdNumber = normalizeOptionalString(awdNumber);
+    }
+
+    if (weight !== undefined && weight !== null && weight !== "") {
+      const parsedWeight = Number(weight);
+
+      if (!Number.isFinite(parsedWeight) || parsedWeight < 0) {
+        return res.status(400).json({
+          success: false,
+          message: "Weight must be a valid non-negative number.",
+        });
+      }
+
+      shipmentData.weight = parsedWeight;
+    }
+
+    if (
+      productCount !== undefined &&
+      productCount !== null &&
+      productCount !== ""
+    ) {
+      const parsedCount = Number(productCount);
+
+      if (!Number.isInteger(parsedCount) || parsedCount < 0) {
+        return res.status(400).json({
+          success: false,
+          message: "Product count must be a non-negative integer.",
+        });
+      }
+
+      shipmentData.productCount = parsedCount;
+    }
+
+    if (invoiceNumber !== undefined) {
+      shipmentData.invoiceNumber = invoiceNumber;
+    }
+
+    if (eWayBillNumber !== undefined) {
+      shipmentData.eWayBillNumber = eWayBillNumber;
+    }
+
+    const shipment = await Shipment.create(shipmentData);
+
+    return res.status(201).json({
+      success: true,
+      message: "Shipment booked successfully.",
+      shipment,
+    });
+  } catch (error) {
+    console.error("Create shipment error:", error);
+
+    if (error.code === 11000) {
+      return res.status(409).json({
+        success: false,
+        message: "A shipment with this number already exists.",
+      });
+    }
+
+    if (error.name === "ValidationError") {
+      return res.status(400).json({
+        success: false,
+        message: error.message,
+      });
+    }
+
+    return res.status(500).json({
+      success: false,
+      message: "Failed to create shipment.",
+      error: error.message,
+    });
+  }
 };
 
-if (awdNumber !== undefined) {
-shipmentData.awdNumber = normalizeOptionalString(awdNumber);
-}
-
-if (weight !== undefined && weight !== null && weight !== "") {
-const parsedWeight = Number(weight);
-
-if (!Number.isFinite(parsedWeight) || parsedWeight < 0) {
-return res.status(400).json({
-success: false,
-message: "Weight must be a valid non-negative number.",
-});
-}
-
-shipmentData.weight = parsedWeight;
-}
-
-if (
-productCount !== undefined &&
-productCount !== null &&
-productCount !== ""
-) {
-const parsedCount = Number(productCount);
-
-if (!Number.isInteger(parsedCount) || parsedCount < 0) {
-return res.status(400).json({
-success: false,
-message: "Product count must be a non-negative integer.",
-});
-}
-
-shipmentData.productCount = parsedCount;
-}
-
-if (invoiceNumber !== undefined) {
-shipmentData.invoiceNumber = invoiceNumber;
-}
-
-if (eWayBillNumber !== undefined) {
-shipmentData.eWayBillNumber = eWayBillNumber;
-}
-
-const shipment = await Shipment.create(shipmentData);
-
-return res.status(201).json({
-success: true,
-message: "Shipment booked successfully.",
-shipment,
-});
-} catch (error) {
-console.error("Create shipment error:", error);
-
-if (error.code === 11000) {
-return res.status(409).json({
-success: false,
-message: "A shipment with this number already exists.",
-});
-}
-
-if (error.name === "ValidationError") {
-return res.status(400).json({
-success: false,
-message: error.message,
-});
-}
-
-return res.status(500).json({
-success: false,
-message: "Failed to create shipment.",
-error: error.message,
-});
-}
-}
 /* =========================================================
    GET ALL SHIPMENTS
    GET /api/shipments
@@ -412,7 +461,6 @@ const getShipmentByTrackingNumber = async (req, res) => {
   }
 };
 
-
 /* =========================================================
    UPDATE SHIPMENT DETAILS
    PATCH /api/shipments/:trackingNumber
@@ -455,9 +503,7 @@ const updateShipment = async (req, res) => {
 
     // Update permitted fields only.
     for (const field of editableFields) {
-      if (
-        Object.prototype.hasOwnProperty.call(req.body, field)
-      ) {
+      if (hasOwn(req.body, field)) {
         const value = clean(req.body[field]);
 
         shipment[field] = value;
@@ -470,9 +516,7 @@ const updateShipment = async (req, res) => {
     }
 
     // Validate and update optional weight.
-    if (
-      Object.prototype.hasOwnProperty.call(req.body, "weight")
-    ) {
+    if (hasOwn(req.body, "weight")) {
       const weight = validateOptionalNumber(
         req.body.weight,
         "weight"
@@ -485,16 +529,15 @@ const updateShipment = async (req, res) => {
         });
       }
 
-      shipment.weight = weight;
+      if (weight === undefined) {
+        shipment.weight = undefined;
+      } else {
+        shipment.weight = weight;
+      }
     }
 
     // Validate and update optional product count.
-    if (
-      Object.prototype.hasOwnProperty.call(
-        req.body,
-        "productCount"
-      )
-    ) {
+    if (hasOwn(req.body, "productCount")) {
       const productCount = validateOptionalNumber(
         req.body.productCount,
         "productCount"
@@ -503,7 +546,6 @@ const updateShipment = async (req, res) => {
       if (
         productCount === null ||
         (productCount !== undefined &&
-          productCount !== "" &&
           (!Number.isInteger(Number(productCount)) ||
             Number(productCount) < 0))
       ) {
@@ -514,36 +556,61 @@ const updateShipment = async (req, res) => {
       }
 
       shipment.productCount =
-        productCount === "" || productCount === undefined
+        productCount === undefined
           ? undefined
           : Number(productCount);
     }
 
-    // Update AWD number safely.
-    if (
-      Object.prototype.hasOwnProperty.call(
-        req.body,
-        "awdNumber"
-      )
-    ) {
+    // Update booking date when supplied.
+    if (hasOwn(req.body, "bookingDate")) {
+      const bookingDate = normalizeOptionalString(
+        req.body.bookingDate
+      );
+
+      if (bookingDate !== null && !validateBookingDate(bookingDate)) {
+        return res.status(400).json({
+          success: false,
+          message: "Booking date must be a valid YYYY-MM-DD date.",
+        });
+      }
+
+      shipment.bookingDate = bookingDate;
+    }
+
+    // Update booking time when supplied.
+    if (hasOwn(req.body, "bookingTime")) {
+      const bookingTime = normalizeOptionalString(
+        req.body.bookingTime
+      );
+
+      if (bookingTime !== null && !validateBookingTime(bookingTime)) {
+        return res.status(400).json({
+          success: false,
+          message: "Booking time must be in HH:mm format.",
+        });
+      }
+
+      shipment.bookingTime = bookingTime;
+    }
+
+    // Update AWD number safely. AWD is optional.
+    if (hasOwn(req.body, "awdNumber")) {
       const awdNumber = normalizeIdentifier(req.body.awdNumber);
 
       if (
         awdNumber &&
-        awdNumber ===
-          normalizeIdentifier(shipment.trackingNumber)
+        awdNumber === normalizeIdentifier(shipment.trackingNumber)
       ) {
         return res.status(400).json({
           success: false,
-          message:
-            "AWD number must be different from the tracking number.",
+          message: "AWD number must be different from the tracking number.",
         });
       }
 
       if (awdNumber) {
         const duplicate = await Shipment.findOne({
           _id: { $ne: shipment._id },
-          awdNumber: awdNumber,
+          awdNumber,
         });
 
         if (duplicate) {
@@ -552,12 +619,14 @@ const updateShipment = async (req, res) => {
             message: "This AWD number already exists.",
           });
         }
-      }
 
-      shipment.awdNumber = awdNumber || undefined;
+        shipment.awdNumber = awdNumber;
+      } else {
+        shipment.awdNumber = undefined;
+      }
     }
 
-    // Persist changes.
+    // Do not add a status-history event for booking date/time edits.
     await shipment.save();
 
     return res.status(200).json({
@@ -595,7 +664,6 @@ const updateShipment = async (req, res) => {
   }
 };
 
-
 /* =========================================================
    UPDATE SHIPMENT STATUS
    PATCH /api/shipments/:trackingNumber/status
@@ -617,14 +685,12 @@ const updateShipmentStatus = async (req, res) => {
     );
 
     const remarks = clean(req.body.remarks);
-
     const eventDateTime = req.body.eventDateTime;
 
     if (!identifier) {
       return res.status(400).json({
         success: false,
-        message:
-          "Please provide a tracking number or AWD number.",
+        message: "Please provide a tracking number or AWD number.",
       });
     }
 
@@ -642,7 +708,6 @@ const updateShipmentStatus = async (req, res) => {
       });
     }
 
-    // Save a valid event timestamp.
     const eventTimestamp =
       eventDateTime && String(eventDateTime).trim()
         ? new Date(eventDateTime)
@@ -680,7 +745,7 @@ const updateShipmentStatus = async (req, res) => {
       shipment.proofOfDelivery = uploadedProofId;
     }
 
-    // Update the current shipment status.
+    // Update current shipment status.
     shipment.status = status;
     shipment.currentStatus = status;
     shipment.currentLocation = currentLocation;
@@ -694,8 +759,7 @@ const updateShipmentStatus = async (req, res) => {
       timestamp: eventTimestamp,
     });
 
-    // Avoid duplicate history if your model middleware
-    // supports this flag.
+    // Prevent automatic duplicate history if supported by model middleware.
     shipment.$locals.skipAutomaticHistory = true;
 
     await shipment.save();
@@ -723,8 +787,7 @@ const updateShipmentStatus = async (req, res) => {
     if (error.code === 11000) {
       return res.status(409).json({
         success: false,
-        message:
-          "A duplicate shipment identifier already exists.",
+        message: "A duplicate shipment identifier already exists.",
       });
     }
 
@@ -747,7 +810,6 @@ const updateShipmentStatus = async (req, res) => {
   }
 };
 
-
 /* =========================================================
    DELETE SHIPMENT
    DELETE /api/shipments/:trackingNumber
@@ -755,7 +817,9 @@ const updateShipmentStatus = async (req, res) => {
 
 const deleteShipment = async (req, res) => {
   try {
-    const identifier = normalizeIdentifier(req.params.trackingNumber);
+    const identifier = normalizeIdentifier(
+      req.params.trackingNumber
+    );
 
     if (!identifier) {
       return res.status(400).json({
@@ -798,7 +862,9 @@ const deleteShipment = async (req, res) => {
 
 const getShippingLabel = async (req, res) => {
   try {
-    const identifier = normalizeIdentifier(req.params.trackingNumber);
+    const identifier = normalizeIdentifier(
+      req.params.trackingNumber
+    );
 
     if (!identifier) {
       return res.status(400).json({
@@ -829,6 +895,10 @@ const getShippingLabel = async (req, res) => {
     }
   }
 };
+
+/* =========================================================
+   EXPORT CONTROLLERS
+========================================================= */
 
 module.exports = {
   createShipment,
