@@ -1,0 +1,282 @@
+
+.um-page {
+  width: 100%;
+  color: #172b4d;
+}
+
+.um-heading {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 16px;
+  margin-bottom: 24px;
+}
+
+.um-eyebrow {
+  color: #00a7df;
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 1.5px;
+}
+
+.um-heading h2 {
+  margin: 7px 0;
+  color: #092b5b;
+  font-size: 27px;
+}
+
+.um-heading p {
+  margin: 0;
+  color: #718096;
+  font-size: 14px;
+}
+
+.um-refresh,
+.um-action {
+  border: 1px solid #d8e4f2;
+  background: #fff;
+  color: #0b3d91;
+  padding: 9px 14px;
+  border-radius: 8px;
+  cursor: pointer;
+  font-weight: 700;
+}
+
+.um-refresh:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.um-stats {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 15px;
+  margin-bottom: 22px;
+}
+
+.um-stat {
+  padding: 20px;
+  border: 1px solid #e1eaf5;
+  border-radius: 13px;
+  background: #fff;
+  box-shadow: 0 5px 18px rgba(11, 61, 145, 0.04);
+}
+
+.um-stat span {
+  display: block;
+  color: #718096;
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.um-stat strong {
+  display: block;
+  margin-top: 8px;
+  color: #0b3d91;
+  font-size: 27px;
+}
+
+.um-tabs {
+  display: flex;
+  gap: 8px;
+  border-bottom: 1px solid #e1eaf5;
+  margin-bottom: 20px;
+}
+
+.um-tabs button {
+  padding: 12px 17px;
+  border: 0;
+  border-bottom: 3px solid transparent;
+  background: transparent;
+  color: #718096;
+  cursor: pointer;
+  font-weight: 700;
+}
+
+.um-tabs button.active {
+  color: #0b3d91;
+  border-bottom-color: #00a7df;
+}
+
+.um-form,
+.um-table-card {
+  margin-bottom: 22px;
+  padding: 22px;
+  border: 1px solid #e1eaf5;
+  border-radius: 13px;
+  background: #fff;
+  box-shadow: 0 5px 18px rgba(11, 61, 145, 0.04);
+}
+
+.um-form h3,
+.um-table-card h3 {
+  margin: 0 0 18px;
+  color: #092b5b;
+  font-size: 17px;
+}
+
+.um-form-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 16px;
+}
+
+.um-form-grid label {
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+  color: #40536c;
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.um-form-grid input,
+.um-form-grid select {
+  width: 100%;
+  min-height: 43px;
+  padding: 10px 12px;
+  border: 1px solid #d8e4f2;
+  border-radius: 8px;
+  outline: none;
+  background: #fff;
+  color: #172b4d;
+  font: inherit;
+  font-weight: 400;
+}
+
+.um-form-grid input:focus,
+.um-form-grid select:focus {
+  border-color: #00a7df;
+  box-shadow: 0 0 0 3px rgba(0, 167, 223, 0.12);
+}
+
+.um-primary-button {
+  margin-top: 18px;
+  padding: 12px 20px;
+  border: 0;
+  border-radius: 8px;
+  background: #0b3d91;
+  color: #fff;
+  cursor: pointer;
+  font-weight: 700;
+}
+
+.um-primary-button:hover {
+  background: #092b5b;
+}
+
+.um-primary-button:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.um-table-scroll {
+  width: 100%;
+  overflow-x: auto;
+}
+
+.um-table {
+  width: 100%;
+  border-collapse: collapse;
+  min-width: 720px;
+}
+
+.um-table th,
+.um-table td {
+  padding: 13px 12px;
+  border-bottom: 1px solid #edf1f6;
+  text-align: left;
+  font-size: 13px;
+  vertical-align: middle;
+}
+
+.um-table th {
+  background: #f5f8fc;
+  color: #53657c;
+  font-size: 11px;
+  letter-spacing: 0.5px;
+  text-transform: uppercase;
+}
+
+.um-table td {
+  color: #30445e;
+}
+
+.um-role,
+.um-status {
+  display: inline-block;
+  padding: 5px 9px;
+  border-radius: 20px;
+  font-size: 11px;
+  font-weight: 800;
+  text-transform: capitalize;
+}
+
+.um-role.admin {
+  background: #e5efff;
+  color: #0b3d91;
+}
+
+.um-role.user {
+  background: #e6f8fb;
+  color: #087b96;
+}
+
+.um-status.active {
+  background: #e6f7ed;
+  color: #16834a;
+}
+
+.um-status.inactive {
+  background: #fff0ed;
+  color: #c14d39;
+}
+
+.um-email {
+  display: block;
+  margin-top: 4px;
+  color: #8492a6;
+  font-size: 11px;
+}
+
+.um-protected {
+  color: #718096;
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.um-message {
+  margin: 14px 0;
+  padding: 12px 14px;
+  border-radius: 8px;
+  font-size: 13px;
+}
+
+.um-error {
+  background: #fff0ed;
+  color: #b93828;
+}
+
+.um-success {
+  background: #e6f7ed;
+  color: #16834a;
+}
+
+@media (max-width: 700px) {
+  .um-stats {
+    grid-template-columns: 1fr;
+  }
+
+  .um-form-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .um-heading {
+    align-items: flex-start;
+  }
+
+  .um-form,
+  .um-table-card {
+    padding: 15px;
+  }
+}

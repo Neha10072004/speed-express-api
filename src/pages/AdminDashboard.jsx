@@ -11,36 +11,28 @@ import AdminSidebar from "../components/AdminSidebar";
 export default function AdminDashboard() {
   const location = useLocation();
 
-  // Read admin details from browser storage
-  const localAdminData = localStorage.getItem(
-    "speedExpressAdmin"
-  );
-
-  const sessionAdminData = sessionStorage.getItem(
-    "speedExpressAdmin"
-  );
-
   let admin = null;
 
+  // Read the saved login session
   try {
-    const adminData = localAdminData || sessionAdminData;
+    const adminData =
+      localStorage.getItem("speedExpressAdmin") ||
+      sessionStorage.getItem("speedExpressAdmin");
 
     admin = adminData ? JSON.parse(adminData) : null;
   } catch (error) {
-    console.error("Unable to read admin details:", error);
-    admin = null;
+    console.error("Unable to read admin session:", error);
   }
 
-  // Check whether the current browser session is authenticated
-  const isLoggedIn =
-    sessionStorage.getItem("speedExpressDemoLogin") === "true";
+  // Support the token property used by the login API
+  const token = admin?.token;
 
-  // Check admin role and login status
-  if (
-    !admin ||
-    admin.role !== "admin" ||
-    !isLoggedIn
-  ) {
+  // Validate admin authentication
+  const isAuthenticated =
+    Boolean(token) &&
+    admin?.role?.toLowerCase() === "admin";
+
+  if (!isAuthenticated) {
     return (
       <Navigate
         to="/login"
@@ -50,21 +42,17 @@ export default function AdminDashboard() {
     );
   }
 
-  // Admin dashboard layout
   return (
     <div className="admin-layout">
-
       {/* Admin Sidebar */}
       <AdminSidebar />
 
       {/* Main Content */}
       <main className="admin-main-content">
-
         {/* Top Bar */}
         <header className="admin-topbar">
           <div className="admin-topbar-left">
             <h1>Speed Express Admin</h1>
-
             <p>
               Manage your courier and delivery operations
             </p>
@@ -80,7 +68,6 @@ export default function AdminDashboard() {
 
             <div className="admin-topbar-user-info">
               <strong>Administrator</strong>
-
               <span>{admin.email}</span>
             </div>
           </div>
@@ -90,7 +77,6 @@ export default function AdminDashboard() {
         <section className="admin-page-content">
           <Outlet />
         </section>
-
       </main>
     </div>
   );

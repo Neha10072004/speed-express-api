@@ -1,7 +1,6 @@
 
-const API_BASE_URL = (
-  import.meta.env.VITE_API_URL ||
-  "https://api.speedexp.in/api"
+const API_URL = (
+  import.meta.env.VITE_API_URL || "https://api.speedexp.in/api"
 ).replace(/\/+$/, "");
 /* =====================================
    COMMON HELPERS

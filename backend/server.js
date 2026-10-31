@@ -1,19 +1,12 @@
 
 /* =========================================================
    SPEED EXPRESS API SERVER
-   Express + MongoDB
+   Express + MongoDB + JWT Authentication
 ========================================================= */
-
-/* ---------------- DNS CONFIGURATION ---------------- */
 
 const dns = require("dns");
 
-dns.setServers([
-  "8.8.8.8",
-  "8.8.4.4",
-]);
-
-/* ---------------- IMPORTS ---------------- */
+dns.setServers(["8.8.8.8", "8.8.4.4"]);
 
 const express = require("express");
 const cors = require("cors");
@@ -22,15 +15,14 @@ const dotenv = require("dotenv");
 dotenv.config();
 
 const connectDB = require("./config/db");
-const shipmentRoutes = require("./routes/shipmentRoutes");
 
-/* ---------------- APP INITIALIZATION ---------------- */
+const shipmentRoutes = require("./routes/shipmentRoutes");
+const authRoutes = require("./routes/authRoutes");
+const adminRoutes = require("./routes/adminRoutes");
 
 const app = express();
 
-/* ---------------- CORS CONFIGURATION ---------------- */
-
-/* ---------------- CORS CONFIGURATION ---------------- */
+/* ---------------- CORS ---------------- */
 
 const allowedOrigins = [
   "http://localhost:5173",
@@ -46,78 +38,42 @@ app.use(
         return callback(null, true);
       }
 
-      return callback(
-        new Error(`CORS blocked this origin: ${origin}`)
-      );
+      return callback(new Error(`CORS blocked this origin: ${origin}`));
     },
-
     credentials: true,
-
-    methods: [
-      "GET",
-      "POST",
-      "PATCH",
-      "PUT",
-      "DELETE",
-      "OPTIONS",
-    ],
-
-    allowedHeaders: [
-      "Content-Type",
-      "Authorization",
-    ],
+    methods: ["GET", "POST", "PATCH", "PUT", "DELETE", "OPTIONS"],
+    allowedHeaders: ["Content-Type", "Authorization"],
   })
 );
 
 /* ---------------- BODY PARSING ---------------- */
 
 app.use(express.json());
+app.use(express.urlencoded({ extended: true }));
 
-app.use(
-  express.urlencoded({
-    extended: true,
-  })
-);
-
-/* =========================================================
-   ROOT ENDPOINT
-   GET /
-========================================================= */
+/* ---------------- ROOT ---------------- */
 
 app.get("/", (req, res) => {
   res.status(200).json({
     success: true,
     message: "Speed Express API is running.",
-
     endpoints: {
-      root: "GET /",
       health: "GET /api/health",
-
+      login: "POST /api/auth/login",
+      logout: "POST /api/auth/logout",
+      currentUser: "GET /api/auth/me",
+      changePassword: "PATCH /api/auth/change-password",
+      users: "GET /api/admin/users",
+      createUser: "POST /api/admin/users",
+      updateUser: "PATCH /api/admin/users/:id",
+      loginActivity: "GET /api/admin/login-activity",
+      shipments: "GET /api/shipments",
       createShipment: "POST /api/shipments",
-      getShipments: "GET /api/shipments",
-
-      trackShipment:
-        "GET /api/shipments/:trackingNumber",
-
-      updateShipment:
-        "PATCH /api/shipments/:trackingNumber",
-
-      updateStatus:
-        "PATCH /api/shipments/:trackingNumber/status",
-
-      shippingLabel:
-        "GET /api/shipments/:trackingNumber/label",
-
-      deleteShipment:
-        "DELETE /api/shipments/:trackingNumber",
     },
   });
 });
 
-/* =========================================================
-   HEALTH CHECK
-   GET /api/health
-========================================================= */
+/* ---------------- HEALTH CHECK ---------------- */
 
 app.get("/api/health", (req, res) => {
   res.status(200).json({
@@ -128,15 +84,14 @@ app.get("/api/health", (req, res) => {
 });
 
 /* =========================================================
-   SHIPMENT ROUTES
-   All routes begin with /api/shipments
+   API ROUTES — MOUNT EACH ROUTER ONLY ONCE
 ========================================================= */
 
+app.use("/api/auth", authRoutes);
+app.use("/api/admin", adminRoutes);
 app.use("/api/shipments", shipmentRoutes);
 
-/* =========================================================
-   404 HANDLER
-========================================================= */
+/* ---------------- 404 HANDLER ---------------- */
 
 app.use((req, res) => {
   res.status(404).json({
@@ -145,9 +100,7 @@ app.use((req, res) => {
   });
 });
 
-/* =========================================================
-   GLOBAL ERROR HANDLER
-========================================================= */
+/* ---------------- GLOBAL ERROR HANDLER ---------------- */
 
 app.use((err, req, res, next) => {
   console.error("SERVER ERROR:", err);
@@ -156,7 +109,6 @@ app.use((err, req, res, next) => {
     return next(err);
   }
 
-  // CORS errors are reported separately from internal errors.
   if (err.message && err.message.startsWith("CORS blocked")) {
     return res.status(403).json({
       success: false,
@@ -174,15 +126,12 @@ app.use((err, req, res, next) => {
   });
 });
 
-/* =========================================================
-   START SERVER
-========================================================= */
+/* ---------------- START SERVER ---------------- */
 
 const PORT = process.env.PORT || 5000;
 
 const startServer = async () => {
   try {
-    // Connect to MongoDB before accepting requests.
     await connectDB();
 
     app.listen(PORT, () => {
@@ -192,6 +141,7 @@ const startServer = async () => {
       console.log(`API running on port ${PORT}`);
       console.log(`Local URL: http://localhost:${PORT}`);
       console.log(`Health: http://localhost:${PORT}/api/health`);
+      console.log(`Login: http://localhost:${PORT}/api/auth/login`);
       console.log("==============================================");
     });
   } catch (error) {
