@@ -30,6 +30,8 @@ const app = express();
 
 /* ---------------- CORS CONFIGURATION ---------------- */
 
+/* ---------------- CORS CONFIGURATION ---------------- */
+
 const allowedOrigins = [
   "http://localhost:5173",
   "http://localhost:3000",
@@ -40,8 +42,6 @@ const allowedOrigins = [
 app.use(
   cors({
     origin: (origin, callback) => {
-      // Permit requests without an Origin header, such as
-      // server-to-server requests and certain API clients.
       if (!origin || allowedOrigins.includes(origin)) {
         return callback(null, true);
       }
@@ -50,6 +50,9 @@ app.use(
         new Error(`CORS blocked this origin: ${origin}`)
       );
     },
+
+    credentials: true,
+
     methods: [
       "GET",
       "POST",
@@ -58,6 +61,7 @@ app.use(
       "DELETE",
       "OPTIONS",
     ],
+
     allowedHeaders: [
       "Content-Type",
       "Authorization",

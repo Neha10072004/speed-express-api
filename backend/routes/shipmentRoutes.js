@@ -1,4 +1,3 @@
-
 const express = require("express");
 const router = express.Router();
 
@@ -13,24 +12,24 @@ const uploadProof = require("../middleware/uploadProof");
    1. CREATE NEW BOOKING
    POST /api/shipments
 --------------------------------------------------------- */
-router.post("/", shipmentController.createShipment);
+router.post(
+  "/",
+  shipmentController.createShipment
+);
 
 /* ---------------------------------------------------------
    2. GET ALL BOOKINGS / ORDERS
    GET /api/shipments
 --------------------------------------------------------- */
-router.get("/", shipmentController.getAllShipments);
+router.get(
+  "/",
+  shipmentController.getAllShipments
+);
 
 /* ---------------------------------------------------------
    3. UPDATE SHIPMENT STATUS
+   Adds a NEW status-history entry.
    PATCH /api/shipments/:trackingNumber/status
-
-   Supports:
-   - Status
-   - Location
-   - Remarks
-   - Event date/time
-   - Optional proof attachment
 --------------------------------------------------------- */
 router.patch(
   "/:trackingNumber/status",
@@ -39,7 +38,18 @@ router.patch(
 );
 
 /* ---------------------------------------------------------
-   4. DOWNLOAD SHIPPING LABEL
+   4. EDIT AN EXISTING STATUS-HISTORY ENTRY
+   Updates an existing entry without adding a new one.
+   PATCH /api/shipments/:trackingNumber/history/:historyId
+--------------------------------------------------------- */
+
+router.patch(
+  "/:trackingNumber/history/:historyId",
+  shipmentController.updateShipmentHistoryEntry
+);
+
+/* ---------------------------------------------------------
+   5. DOWNLOAD SHIPPING LABEL
    GET /api/shipments/:trackingNumber/label
 --------------------------------------------------------- */
 router.get(
@@ -48,7 +58,7 @@ router.get(
 );
 
 /* ---------------------------------------------------------
-   5. EDIT EXISTING BOOKING
+   6. EDIT EXISTING BOOKING
    PATCH /api/shipments/:trackingNumber
 --------------------------------------------------------- */
 router.patch(
@@ -57,7 +67,7 @@ router.patch(
 );
 
 /* ---------------------------------------------------------
-   6. DELETE BOOKING
+   7. DELETE BOOKING
    DELETE /api/shipments/:trackingNumber
 --------------------------------------------------------- */
 router.delete(
@@ -66,11 +76,8 @@ router.delete(
 );
 
 /* ---------------------------------------------------------
-   7. GET SINGLE SHIPMENT
+   8. GET SINGLE SHIPMENT
    GET /api/shipments/:trackingNumber
-
-   Supports tracking number or AWD number if the
-   controller's lookup function supports both.
 --------------------------------------------------------- */
 router.get(
   "/:trackingNumber",
@@ -80,4 +87,5 @@ router.get(
 /* =========================================================
    EXPORT ROUTER
 ========================================================= */
+
 module.exports = router;

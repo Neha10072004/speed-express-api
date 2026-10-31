@@ -1050,3 +1050,28 @@
     gap: 7px;
   }
 }
+
+.backend-status {
+  max-width: 700px;
+  margin: 20px auto;
+  padding: 16px 20px;
+  text-align: center;
+  border: 1px solid #d1d5db;
+  border-radius: 12px;
+}
+
+.backend-status p {
+  margin: 8px 0 0;
+}
+
+.backend-status-online {
+  color: #176b35;
+  background: #e8f8ee;
+  border-color: #a8e6bd;
+}
+
+.backend-status-offline {
+  color: #991b1b;
+  background: #fef2f2;
+  border-color: #fecaca;
+}

@@ -1,4 +1,3 @@
-
 const mongoose = require("mongoose");
 const { GridFSBucket, ObjectId } = require("mongodb");
 const { Readable } = require("stream");
@@ -41,26 +40,21 @@ const hasOwn = (object, field) =>
   Object.prototype.hasOwnProperty.call(object, field);
 
 /* =========================================================
-   MISSING HELPER FUNCTIONS — TRACKING AND VALIDATION FIX
+   TRACKING AND VALIDATION HELPERS
 ========================================================= */
 
-// Normalize tracking/AWD identifiers so spaces and letter case
-// do not matter.
 const normalizeIdentifier = (value) => {
   if (value === null || value === undefined) return "";
 
   return String(value).trim().replace(/\s+/g, "").toUpperCase();
 };
 
-// Convert optional text to a trimmed string.
 const clean = (value) => {
   if (value === null || value === undefined) return "";
 
   return String(value).trim();
 };
 
-// Validate optional non-negative numeric fields.
-// Returns undefined for blank input and null for invalid input.
 const validateOptionalNumber = (value, fieldName) => {
   if (
     value === undefined ||
@@ -175,8 +169,6 @@ const findShipmentByIdentifier = async (identifier) => {
     return null;
   }
 
-  // Use normalized values to search tracking and AWD numbers.
-  // Existing database values are expected to be stored normalized.
   return Shipment.findOne({
     $or: [
       { trackingNumber: normalizedIdentifier },
@@ -279,8 +271,8 @@ const createShipment = async (req, res) => {
       });
     }
 
-    // If a booking date/time is omitted, use current India date/time.
-    // If explicitly blank, store null.
+    // If omitted, use current India date/time.
+    // If explicitly blank, save null.
     const indiaNow = getIndiaBookingDateTime();
 
     const bookingDate = hasOwn(req.body, "bookingDate")
@@ -501,21 +493,18 @@ const updateShipment = async (req, res) => {
       "remarks",
     ];
 
-    // Update permitted fields only.
     for (const field of editableFields) {
       if (hasOwn(req.body, field)) {
         const value = clean(req.body[field]);
 
         shipment[field] = value;
 
-        // Keep both status fields synchronized.
         if (field === "status" && value) {
           shipment.currentStatus = value;
         }
       }
     }
 
-    // Validate and update optional weight.
     if (hasOwn(req.body, "weight")) {
       const weight = validateOptionalNumber(
         req.body.weight,
@@ -529,14 +518,10 @@ const updateShipment = async (req, res) => {
         });
       }
 
-      if (weight === undefined) {
-        shipment.weight = undefined;
-      } else {
-        shipment.weight = weight;
-      }
+      shipment.weight =
+        weight === undefined ? undefined : weight;
     }
 
-    // Validate and update optional product count.
     if (hasOwn(req.body, "productCount")) {
       const productCount = validateOptionalNumber(
         req.body.productCount,
@@ -561,7 +546,6 @@ const updateShipment = async (req, res) => {
           : Number(productCount);
     }
 
-    // Update booking date when supplied.
     if (hasOwn(req.body, "bookingDate")) {
       const bookingDate = normalizeOptionalString(
         req.body.bookingDate
@@ -577,7 +561,6 @@ const updateShipment = async (req, res) => {
       shipment.bookingDate = bookingDate;
     }
 
-    // Update booking time when supplied.
     if (hasOwn(req.body, "bookingTime")) {
       const bookingTime = normalizeOptionalString(
         req.body.bookingTime
@@ -593,7 +576,6 @@ const updateShipment = async (req, res) => {
       shipment.bookingTime = bookingTime;
     }
 
-    // Update AWD number safely. AWD is optional.
     if (hasOwn(req.body, "awdNumber")) {
       const awdNumber = normalizeIdentifier(req.body.awdNumber);
 
@@ -626,7 +608,7 @@ const updateShipment = async (req, res) => {
       }
     }
 
-    // Do not add a status-history event for booking date/time edits.
+    // Booking date/time edits do not create status-history entries.
     await shipment.save();
 
     return res.status(200).json({
@@ -659,6 +641,162 @@ const updateShipment = async (req, res) => {
     return res.status(500).json({
       success: false,
       message: "Failed to update shipment.",
+      error: error.message,
+    });
+  }
+};
+
+/* =========================================================
+   EDIT EXISTING STATUS HISTORY ENTRY
+   PATCH /api/shipments/:trackingNumber/history/:historyId
+========================================================= */
+
+const updateShipmentHistoryEntry = async (req, res) => {
+  try {
+    const identifier = normalizeIdentifier(
+      req.params.trackingNumber
+    );
+
+    const { historyId } = req.params;
+
+    if (!identifier || !mongoose.isValidObjectId(historyId)) {
+      return res.status(400).json({
+        success: false,
+        message: "Valid tracking/AWD number and history ID are required.",
+      });
+    }
+
+    const shipment = await findShipmentByIdentifier(identifier);
+
+    if (!shipment) {
+      return res.status(404).json({
+        success: false,
+        message: "Shipment not found.",
+      });
+    }
+
+    if (!Array.isArray(shipment.history)) {
+      return res.status(404).json({
+        success: false,
+        message: "No shipment history is available.",
+      });
+    }
+
+    const entry = shipment.history.id(historyId);
+
+    if (!entry) {
+      return res.status(404).json({
+        success: false,
+        message: "Selected status-history entry was not found.",
+      });
+    }
+
+    if (hasOwn(req.body, "status")) {
+      const status = clean(req.body.status);
+
+      if (!status) {
+        return res.status(400).json({
+          success: false,
+          message: "Status cannot be blank.",
+        });
+      }
+
+      entry.status = status;
+    }
+
+    if (hasOwn(req.body, "location")) {
+      const location = clean(req.body.location);
+
+      if (!location) {
+        return res.status(400).json({
+          success: false,
+          message: "Location cannot be blank.",
+        });
+      }
+
+      entry.location = location;
+    }
+
+    if (hasOwn(req.body, "remarks")) {
+      entry.remarks = clean(req.body.remarks);
+    }
+
+    if (hasOwn(req.body, "eventDateTime")) {
+      const value = String(req.body.eventDateTime || "").trim();
+
+      if (!value) {
+        return res.status(400).json({
+          success: false,
+          message: "Event date and time are required.",
+        });
+      }
+
+      // datetime-local is interpreted as India time.
+      const timestamp =
+        /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}$/.test(value)
+          ? new Date(`${value}:00+05:30`)
+          : new Date(value);
+
+      if (Number.isNaN(timestamp.getTime())) {
+        return res.status(400).json({
+          success: false,
+          message: "Invalid event date and time.",
+        });
+      }
+
+      entry.timestamp = timestamp;
+    }
+
+    // Find the latest history event by timestamp.
+    const latestEntry = shipment.history.reduce((latest, item) => {
+      if (!latest) return item;
+
+      return new Date(item.timestamp || 0) >
+        new Date(latest.timestamp || 0)
+        ? item
+        : latest;
+    }, null);
+
+    // Synchronize main shipment fields only if the edited
+    // entry is the latest history event.
+    if (
+      latestEntry &&
+      String(latestEntry._id) === String(entry._id)
+    ) {
+      shipment.status = entry.status;
+      shipment.currentStatus = entry.status;
+      shipment.currentLocation = entry.location;
+      shipment.remarks = entry.remarks || "";
+    }
+
+    // Prevent automatic duplicate history.
+    shipment.$locals.skipAutomaticHistory = true;
+
+    await shipment.save();
+
+    return res.status(200).json({
+      success: true,
+      message: "Existing status-history entry updated successfully.",
+      shipment,
+      historyEntry: entry,
+    });
+  } catch (error) {
+    console.error("Edit shipment history entry error:", error);
+
+    if (
+      error.name === "ValidationError" ||
+      error.name === "CastError"
+    ) {
+      return res.status(400).json({
+        success: false,
+        message: "Invalid status-history information.",
+        error: error.message,
+      });
+    }
+
+    return res.status(500).json({
+      success: false,
+      message: "Failed to edit the status-history entry.",
       error: error.message,
     });
   }
@@ -729,7 +867,6 @@ const updateShipmentStatus = async (req, res) => {
       });
     }
 
-    // Ensure history exists before appending a new event.
     if (!Array.isArray(shipment.history)) {
       shipment.history = [];
     }
@@ -745,13 +882,12 @@ const updateShipmentStatus = async (req, res) => {
       shipment.proofOfDelivery = uploadedProofId;
     }
 
-    // Update current shipment status.
     shipment.status = status;
     shipment.currentStatus = status;
     shipment.currentLocation = currentLocation;
     shipment.remarks = remarks;
 
-    // Append a new event without deleting older events.
+    // Add a NEW status-history entry.
     shipment.history.push({
       status,
       location: currentLocation,
@@ -759,7 +895,7 @@ const updateShipmentStatus = async (req, res) => {
       timestamp: eventTimestamp,
     });
 
-    // Prevent automatic duplicate history if supported by model middleware.
+    // Prevent automatic duplicate history.
     shipment.$locals.skipAutomaticHistory = true;
 
     await shipment.save();
@@ -903,9 +1039,10 @@ const getShippingLabel = async (req, res) => {
 module.exports = {
   createShipment,
   getAllShipments,
-  getShipmentByTrackingNumber,
-  updateShipment,
   updateShipmentStatus,
-  deleteShipment,
+  updateShipmentHistoryEntry,
   getShippingLabel,
+  updateShipment,
+  deleteShipment,
+  getShipmentByTrackingNumber,
 };

@@ -1,6 +1,3 @@
-
-
-
 const mongoose = require("mongoose");
 
 // --------------------------------------------------
@@ -100,7 +97,7 @@ const shipmentSchema = new mongoose.Schema(
 
     // OPTIONAL BOOKING DATE
     // Format: YYYY-MM-DD
-    // Can be null when cleared by the admin.
+    // Can be null when cleared by admin.
 
     bookingDate: {
       type: String,
@@ -110,7 +107,7 @@ const shipmentSchema = new mongoose.Schema(
 
     // OPTIONAL BOOKING TIME
     // Format: HH:mm (24-hour format)
-    // Can be null when cleared by the admin.
+    // Can be null when cleared by admin.
 
     bookingTime: {
       type: String,
@@ -219,7 +216,6 @@ const shipmentSchema = new mongoose.Schema(
     },
 
     // SHIPMENT STATUS
-    // "status" is the primary source of truth.
 
     status: {
       type: String,
@@ -281,8 +277,8 @@ shipmentSchema.pre("save", function (next) {
     this.status = normalizedStatus;
     this.currentStatus = normalizedStatus;
 
-    // If the controller already appended a history event,
-    // do not append another one automatically.
+    // If controller already appended a history event,
+    // do not append another event automatically.
     if (this.$locals.skipAutomaticHistory) {
       this.$locals.skipAutomaticHistory = false;
       return next();

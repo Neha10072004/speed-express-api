@@ -7,13 +7,15 @@ import Analytics from "../components/Analytics";
 import Contact from "../components/Contact";
 
 export default function Home() {
-  return <>
-    <Hero />
-    <Services />
-    <WhySpeedExpress />
-    <Tracking />
-    <CorporateGifting />
-    <Analytics />
-    <Contact />
-  </>;
+  return (
+    <>
+      <Hero />
+      <Services />
+      <WhySpeedExpress />
+      <Tracking />
+      <CorporateGifting />
+      <Analytics />
+      <Contact />
+    </>
+  );
 }
