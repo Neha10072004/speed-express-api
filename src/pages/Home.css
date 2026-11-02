@@ -1,0 +1,24 @@
+
+.diwali-banner {
+  width: 100%;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  overflow: hidden;
+  background: #092b5b;
+}
+
+.diwali-banner-image {
+  display: block;
+  width: 100%;
+  height: auto;
+  max-width: 1600px;
+  object-fit: contain;
+}
+
+@media (max-width: 768px) {
+  .diwali-banner-image {
+    width: 100%;
+    height: auto;
+  }
+}
