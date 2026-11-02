@@ -14,10 +14,10 @@ export default function Home() {
   return (
     <>
       {/* Diwali Promotional Banner */}
-      <section className="diwali-banner">
+<section className="diwali-banner">
   <img
-    src={`${import.meta.env.BASE_URL}diwali-speed-express.png`}
-    alt="Speed Express Diwali special offer"
+    src="/diwali-speed-express.png"
+    alt="Speed Express Diwali Special Offer"
     className="diwali-banner-image"
   />
 </section>

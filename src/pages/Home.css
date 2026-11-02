@@ -1,31 +1,14 @@
-
-/* Full-width Diwali banner */
 .diwali-banner {
   width: 100%;
   margin: 0;
   padding: 0;
-  display: block;
   overflow: hidden;
-  background: #092b5b;
   line-height: 0;
 }
 
 .diwali-banner-image {
   display: block;
   width: 100%;
-  max-width: none;
   height: auto;
-  max-height: none;
-  margin: 0;
-  padding: 0;
   object-fit: contain;
-  border-radius: 0;
-}
-
-/* Mobile */
-@media (max-width: 768px) {
-  .diwali-banner-image {
-    width: 100%;
-    height: auto;
-  }
 }
