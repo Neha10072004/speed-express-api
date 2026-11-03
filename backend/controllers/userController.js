@@ -66,13 +66,13 @@ const createUser = async (req, res) => {
       });
     }
 
-    const user = await User.create({
-      name: name.trim(),
-      email: normalizedEmail,
-      password,
-      role,
-      isActive: true,
-    });
+const user = await User.create({
+  name: name.trim(),
+  email: normalizedEmail,
+  password,
+  role,
+  isActive: true,
+});
 
     return res.status(201).json({
       success: true,

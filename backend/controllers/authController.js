@@ -16,7 +16,81 @@ const recordActivity = async (data) => {
   try {
     await LoginActivity.create(data);
   } catch (error) {
-    console.error("Login activity recording failed:", error.message);
+    console.error(
+      "Login activity recording failed:",
+      error.message
+    );
+  }
+};
+
+// POST /api/auth/register
+const register = async (req, res) => {
+  try {
+    const { name, email, password } = req.body;
+
+    if (!name || !email || !password) {
+      return res.status(400).json({
+        success: false,
+        message: "Name, email and password are required.",
+      });
+    }
+
+    if (String(password).length < 8) {
+      return res.status(400).json({
+        success: false,
+        message: "Password must contain at least 8 characters.",
+      });
+    }
+
+    const normalizedEmail = String(email)
+      .trim()
+      .toLowerCase();
+
+    const existingUser = await User.findOne({
+      email: normalizedEmail,
+    });
+
+    if (existingUser) {
+      return res.status(409).json({
+        success: false,
+        message: "An account with this email already exists.",
+      });
+    }
+
+    // Public signup must never create an admin.
+    const user = await User.create({
+      name: String(name).trim(),
+      email: normalizedEmail,
+      password,
+      role: "user",
+      isActive: true,
+    });
+
+    return res.status(201).json({
+      success: true,
+      message: "Account created successfully.",
+      user: {
+        id: user._id,
+        name: user.name,
+        email: user.email,
+        role: user.role,
+        isActive: user.isActive,
+      },
+    });
+  } catch (error) {
+    console.error("Registration error:", error);
+
+    if (error.code === 11000) {
+      return res.status(409).json({
+        success: false,
+        message: "An account with this email already exists.",
+      });
+    }
+
+    return res.status(500).json({
+      success: false,
+      message: "Unable to create account.",
+    });
   }
 };
 
@@ -32,7 +106,9 @@ const login = async (req, res) => {
       });
     }
 
-    const normalizedEmail = email.trim().toLowerCase();
+    const normalizedEmail = String(email)
+      .trim()
+      .toLowerCase();
 
     const user = await User.findOne({
       email: normalizedEmail,
@@ -67,7 +143,8 @@ const login = async (req, res) => {
 
       return res.status(403).json({
         success: false,
-        message: "Your account is inactive. Contact an administrator.",
+        message:
+          "Your account is inactive. Contact an administrator.",
       });
     }
 
@@ -208,7 +285,15 @@ const changePassword = async (req, res) => {
       });
     }
 
-    const user = await User.findById(req.user._id).select("+password");
+    const user = await User.findById(req.user._id)
+      .select("+password");
+
+    if (!user) {
+      return res.status(404).json({
+        success: false,
+        message: "User not found.",
+      });
+    }
 
     const matches = await user.comparePassword(currentPassword);
 
@@ -234,7 +319,8 @@ const changePassword = async (req, res) => {
 
     return res.status(200).json({
       success: true,
-      message: "Password changed successfully. Please log in again.",
+      message:
+        "Password changed successfully. Please log in again.",
     });
   } catch (error) {
     console.error("Change password error:", error);
@@ -247,6 +333,7 @@ const changePassword = async (req, res) => {
 };
 
 module.exports = {
+  register,
   login,
   logout,
   getMe,

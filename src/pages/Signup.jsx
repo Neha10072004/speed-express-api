@@ -1,22 +1,53 @@
-import { useState } from "react";
+
+import React, { useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
+
+const API_URL = (
+  import.meta.env.VITE_API_URL ||
+  "https://api.speedexp.in/api"
+).replace(/\/+$/, "");
 
 export default function Signup() {
   const navigate = useNavigate();
+
   const [form, setForm] = useState({
     name: "",
     email: "",
     phone: "",
     password: "",
-    confirmPassword: ""
+    confirmPassword: "",
   });
+
   const [error, setError] = useState("");
+  const [success, setSuccess] = useState("");
+  const [loading, setLoading] = useState(false);
 
-  const submit = (e) => {
-    e.preventDefault();
+  const handleChange = (event) => {
+    const { name, value } = event.target;
 
-    if (form.password.length < 6) {
-      setError("Password must contain at least 6 characters.");
+    setForm((previous) => ({
+      ...previous,
+      [name]: value,
+    }));
+  };
+
+  const submit = async (event) => {
+    event.preventDefault();
+
+    setError("");
+    setSuccess("");
+
+    const name = form.name.trim();
+    const email = form.email.trim().toLowerCase();
+    const phone = form.phone.trim();
+
+    if (!name || !email || !phone || !form.password) {
+      setError("Please fill in all required fields.");
+      return;
+    }
+
+    if (form.password.length < 8) {
+      setError("Password must contain at least 8 characters.");
       return;
     }
 
@@ -25,18 +56,56 @@ export default function Signup() {
       return;
     }
 
-    localStorage.setItem(
-      "speedExpressUser",
-      JSON.stringify({
-        name: form.name,
-        email: form.email,
-        phone: form.phone,
-        password: form.password
-      })
-    );
+    setLoading(true);
 
-    localStorage.setItem("speedExpressLoggedIn", "true");
-    navigate("/");
+    try {
+      const response = await fetch(`${API_URL}/auth/register`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          name,
+          email,
+          phone,
+          password: form.password,
+        }),
+      });
+
+      const data = await response.json().catch(() => ({}));
+
+      if (!response.ok || data.success === false) {
+        throw new Error(
+          data.message || "Unable to create your account."
+        );
+      }
+
+      setSuccess(
+        "Your account has been created successfully. Please log in."
+      );
+
+      setForm({
+        name: "",
+        email: "",
+        phone: "",
+        password: "",
+        confirmPassword: "",
+      });
+
+      // Do not automatically create an admin session.
+      setTimeout(() => {
+        navigate("/login", { replace: true });
+      }, 1200);
+    } catch (err) {
+      console.error("Signup error:", err);
+
+      setError(
+        err.message ||
+          "Unable to connect to the server. Please try again."
+      );
+    } finally {
+      setLoading(false);
+    }
   };
 
   return (
@@ -47,15 +116,19 @@ export default function Signup() {
       <div className="auth-card signup-card">
         <div className="auth-brand">
           <img
-  src={`${import.meta.env.BASE_URL}speed-express-logo.png`}
-  alt="Speed Express"
-/>
+            src={`${import.meta.env.BASE_URL}speed-express-logo.png`}
+            alt="Speed Express"
+          />
         </div>
 
         <div className="auth-title">
           <span className="eyebrow blue">CREATE ACCOUNT</span>
-          <h1>Join <span>Speed Express</span></h1>
-          <p>Create your account to manage your courier requirements.</p>
+          <h1>
+            Join <span>Speed Express</span>
+          </h1>
+          <p>
+            Create your account to manage your courier requirements.
+          </p>
         </div>
 
         <form className="auth-form" onSubmit={submit}>
@@ -63,21 +136,28 @@ export default function Signup() {
             <label>
               Full Name
               <input
+                name="name"
+                type="text"
                 required
                 placeholder="Your full name"
                 value={form.name}
-                onChange={(e) => setForm({ ...form, name: e.target.value })}
+                onChange={handleChange}
+                autoComplete="name"
+                disabled={loading}
               />
             </label>
 
             <label>
               Phone
               <input
-                required
+                name="phone"
                 type="tel"
+                required
                 placeholder="Phone number"
                 value={form.phone}
-                onChange={(e) => setForm({ ...form, phone: e.target.value })}
+                onChange={handleChange}
+                autoComplete="tel"
+                disabled={loading}
               />
             </label>
           </div>
@@ -85,11 +165,14 @@ export default function Signup() {
           <label>
             Email Address
             <input
-              required
+              name="email"
               type="email"
+              required
               placeholder="Enter your email"
               value={form.email}
-              onChange={(e) => setForm({ ...form, email: e.target.value })}
+              onChange={handleChange}
+              autoComplete="email"
+              disabled={loading}
             />
           </label>
 
@@ -97,32 +180,58 @@ export default function Signup() {
             <label>
               Password
               <input
-                required
+                name="password"
                 type="password"
-                placeholder="Minimum 6 characters"
+                required
+                minLength={8}
+                placeholder="Minimum 8 characters"
                 value={form.password}
-                onChange={(e) => setForm({ ...form, password: e.target.value })}
+                onChange={handleChange}
+                autoComplete="new-password"
+                disabled={loading}
               />
             </label>
 
             <label>
               Confirm Password
               <input
-                required
+                name="confirmPassword"
                 type="password"
+                required
+                minLength={8}
                 placeholder="Repeat password"
                 value={form.confirmPassword}
-                onChange={(e) => setForm({ ...form, confirmPassword: e.target.value })}
+                onChange={handleChange}
+                autoComplete="new-password"
+                disabled={loading}
               />
             </label>
           </div>
 
-          {error && <div className="auth-error">{error}</div>}
+          {error && (
+            <div className="auth-error" role="alert">
+              {error}
+            </div>
+          )}
 
-          <button className="btn btn-primary auth-submit">Create Account →</button>
+          {success && (
+            <div className="auth-success" role="status">
+              {success}
+            </div>
+          )}
+
+          <button
+            type="submit"
+            className="btn btn-primary auth-submit"
+            disabled={loading}
+          >
+            {loading ? "Creating Account..." : "Create Account →"}
+          </button>
         </form>
 
-        <div className="auth-divider"><span>OR</span></div>
+        <div className="auth-divider">
+          <span>OR</span>
+        </div>
 
         <p className="auth-switch">
           Already have an account?
