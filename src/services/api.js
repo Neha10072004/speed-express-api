@@ -2,6 +2,37 @@
 const API_URL = (
   import.meta.env.VITE_API_URL || "https://api.speedexp.in/api"
 ).replace(/\/+$/, "");
+
+/* =====================================
+   AUTHENTICATION HELPERS
+===================================== */
+
+const getLoginUser = () => {
+  try {
+    const savedUser =
+      localStorage.getItem("speedExpressAdmin") ||
+      sessionStorage.getItem("speedExpressAdmin");
+
+    return savedUser ? JSON.parse(savedUser) : null;
+  } catch (error) {
+    console.error("Unable to read login session:", error);
+    return null;
+  }
+};
+
+const getAuthHeaders = (required = false) => {
+  const user = getLoginUser();
+  const token = user?.token;
+
+  if (required && !token) {
+    throw new Error("Please log in before performing this action.");
+  }
+
+  return token
+    ? { Authorization: `Bearer ${token}` }
+    : {};
+};
+
 /* =====================================
    COMMON HELPERS
 ===================================== */
@@ -46,16 +77,28 @@ const getErrorMessage = (data, fallback) => {
   return fallback;
 };
 
-const fetchApi = async (url, options = {}) => {
+const fetchApi = async (
+  url,
+  options = {},
+  authRequired = false
+) => {
   let response;
 
   try {
-    response = await fetch(url, options);
+    const headers = {
+      ...getAuthHeaders(authRequired),
+      ...(options.headers || {}),
+    };
+
+    response = await fetch(url, {
+      ...options,
+      headers,
+    });
   } catch (error) {
     if (error instanceof TypeError) {
       throw new Error(
         `Cannot connect to Speed Express API at ${API_URL}. ` +
-          "Check your internet connection, backend server, and CORS settings."
+        "Check your internet connection, backend server, and CORS settings."
       );
     }
 
@@ -78,6 +121,7 @@ const fetchApi = async (url, options = {}) => {
 
 /* =====================================
    BACKEND HEALTH CHECK
+   Public endpoint
 ===================================== */
 
 export const checkBackendHealth = async () => {
@@ -86,20 +130,24 @@ export const checkBackendHealth = async () => {
 
 /* =====================================
    CREATE SHIPMENT
+   Admin + Staff
 ===================================== */
 
 export const createShipment = async (shipmentData) => {
   try {
-    const data = await fetchApi(`${API_URL}/shipments`, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
+    const data = await fetchApi(
+      `${API_URL}/shipments`,
+      {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify(shipmentData),
       },
-      body: JSON.stringify(shipmentData),
-    });
+      true
+    );
 
     console.log("Create Shipment Response:", data);
-
     return data;
   } catch (error) {
     console.error("createShipment Error:", error);
@@ -109,14 +157,18 @@ export const createShipment = async (shipmentData) => {
 
 /* =====================================
    GET ALL SHIPMENTS
+   Admin + Staff
 ===================================== */
 
 export const getAllShipments = async () => {
   try {
-    const data = await fetchApi(`${API_URL}/shipments`);
+    const data = await fetchApi(
+      `${API_URL}/shipments`,
+      {},
+      true
+    );
 
     console.log("All Shipments Response:", data);
-
     return data;
   } catch (error) {
     console.error("getAllShipments Error:", error);
@@ -127,6 +179,8 @@ export const getAllShipments = async () => {
 /* =====================================
    TRACK SHIPMENT
    TRACKING NUMBER OR AWD NUMBER
+
+   Public endpoint
 ===================================== */
 
 export const trackShipment = async (trackingNumber) => {
@@ -139,7 +193,6 @@ export const trackShipment = async (trackingNumber) => {
     const data = await fetchApi(getShipmentUrl(number));
 
     console.log("Track Shipment Response:", data);
-
     return data;
   } catch (error) {
     console.error("trackShipment Error:", error);
@@ -149,18 +202,17 @@ export const trackShipment = async (trackingNumber) => {
 
 /* =====================================
    UPDATE SHIPMENT STATUS
-   ONE OPTIONAL ATTACHMENT
+   Admin + Staff
 ===================================== */
 
 export const updateShipmentStatus = async (
   trackingNumber,
   statusData
 ) => {
-  const number = String(trackingNumber || "").trim();
-
-  if (!number) {
-    throw new Error("Tracking Number or AWD Number is required.");
-  }
+  const number = validateNumber(
+    trackingNumber,
+    "Tracking Number or AWD Number is required."
+  );
 
   const formData = new FormData();
 
@@ -173,27 +225,24 @@ export const updateShipmentStatus = async (
     formData.append("proofFile", statusData.proofFile);
   }
 
-  const response = await fetch(
-    `${API_URL}/shipments/${encodeURIComponent(number)}/status`,
-    {
-      method: "PATCH",
-      body: formData,
-    }
-  );
-
-  const result = await response.json();
-
-  if (!response.ok) {
-    throw new Error(
-      result.message || "Failed to update shipment status."
+  try {
+    return await fetchApi(
+      `${API_URL}/shipments/${encodeURIComponent(number)}/status`,
+      {
+        method: "PATCH",
+        body: formData,
+      },
+      true
     );
+  } catch (error) {
+    console.error("updateShipmentStatus Error:", error);
+    throw error;
   }
-
-  return result;
 };
 
 /* =====================================
-   FETCH AND VALIDATE SHIPPING LABEL PDF
+   FETCH SHIPPING LABEL PDF
+   Admin + Staff
 ===================================== */
 
 const fetchShippingLabel = async (trackingNumber) => {
@@ -207,7 +256,9 @@ const fetchShippingLabel = async (trackingNumber) => {
   let response;
 
   try {
-    response = await fetch(url);
+    response = await fetch(url, {
+      headers: getAuthHeaders(true),
+    });
   } catch (error) {
     if (error instanceof TypeError) {
       throw new Error(
@@ -274,7 +325,6 @@ export const downloadShippingLabel = async (trackingNumber) => {
     blobUrl = window.URL.createObjectURL(blob);
 
     const link = document.createElement("a");
-
     link.href = blobUrl;
     link.download = `SpeedExpress-${number}.pdf`;
 
@@ -287,7 +337,6 @@ export const downloadShippingLabel = async (trackingNumber) => {
     }, 5000);
 
     console.log("Shipping label download started.");
-
     return true;
   } catch (error) {
     console.error("downloadShippingLabel Error:", error);
@@ -320,7 +369,6 @@ export const printShippingLabel = async (trackingNumber) => {
     const result = await fetchShippingLabel(trackingNumber);
 
     blobUrl = window.URL.createObjectURL(result.blob);
-
     printWindow.location.replace(blobUrl);
 
     const activeWindow = printWindow;

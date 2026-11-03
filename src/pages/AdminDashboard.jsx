@@ -11,26 +11,27 @@ import AdminSidebar from "../components/AdminSidebar";
 export default function AdminDashboard() {
   const location = useLocation();
 
-  let admin = null;
+  let currentUser = null;
 
   // Read the saved login session
   try {
-    const adminData =
+    const userData =
       localStorage.getItem("speedExpressAdmin") ||
       sessionStorage.getItem("speedExpressAdmin");
 
-    admin = adminData ? JSON.parse(adminData) : null;
+    currentUser = userData ? JSON.parse(userData) : null;
   } catch (error) {
-    console.error("Unable to read admin session:", error);
+    console.error("Unable to read login session:", error);
   }
 
-  // Support the token property used by the login API
-  const token = admin?.token;
+  const token = currentUser?.token;
+  const role = String(currentUser?.role || "").trim().toLowerCase();
 
-  // Validate admin authentication
+  // Allow both administrators and staff users
+  const allowedRoles = ["admin", "user"];
+
   const isAuthenticated =
-    Boolean(token) &&
-    admin?.role?.toLowerCase() === "admin";
+    Boolean(token) && allowedRoles.includes(role);
 
   if (!isAuthenticated) {
     return (
@@ -42,9 +43,13 @@ export default function AdminDashboard() {
     );
   }
 
+  const displayName = currentUser?.name || "User";
+  const displayEmail = currentUser?.email || "";
+  const isAdmin = role === "admin";
+
   return (
     <div className="admin-layout">
-      {/* Admin Sidebar */}
+      {/* Shared Sidebar */}
       <AdminSidebar />
 
       {/* Main Content */}
@@ -52,28 +57,29 @@ export default function AdminDashboard() {
         {/* Top Bar */}
         <header className="admin-topbar">
           <div className="admin-topbar-left">
-            <h1>Speed Express Admin</h1>
+            <h1>Speed Express Dashboard</h1>
             <p>
-              Manage your courier and delivery operations
+              Manage courier bookings and delivery operations
             </p>
           </div>
 
-          {/* Admin User */}
+          {/* Logged-in User */}
           <div className="admin-topbar-user">
             <div className="admin-topbar-avatar">
-              {(admin.email || "A")
-                .charAt(0)
-                .toUpperCase()}
+              {displayName.charAt(0).toUpperCase()}
             </div>
 
             <div className="admin-topbar-user-info">
-              <strong>Administrator</strong>
-              <span>{admin.email}</span>
+              <strong>{displayName}</strong>
+              <span>
+                {isAdmin ? "Administrator" : "Staff User"}
+              </span>
+              <span>{displayEmail}</span>
             </div>
           </div>
         </header>
 
-        {/* Nested Admin Pages */}
+        {/* Nested Dashboard Pages */}
         <section className="admin-page-content">
           <Outlet />
         </section>

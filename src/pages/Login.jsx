@@ -20,7 +20,6 @@ export default function Login() {
 
   const handleSubmit = async (event) => {
     event.preventDefault();
-
     setError("");
 
     const trimmedEmail = email.trim().toLowerCase();
@@ -47,9 +46,7 @@ export default function Login() {
       const data = await response.json().catch(() => ({}));
 
       if (!response.ok || data.success === false) {
-        throw new Error(
-          data.message || "Invalid email or password."
-        );
+        throw new Error(data.message || "Invalid email or password.");
       }
 
       // Support the user object returned by the login API.
@@ -61,29 +58,27 @@ export default function Login() {
         );
       }
 
-      // Normalize role to handle Admin, ADMIN, and admin.
+      // Allow both Admin and Staff User accounts.
       const userRole = String(loggedInUser.role || "")
         .trim()
         .toLowerCase();
 
-      if (userRole !== "admin") {
-        throw new Error(
-          "You do not have administrator access."
-        );
+      if (!["admin", "user"].includes(userRole)) {
+        throw new Error("Your account does not have dashboard access.");
       }
 
-      // Create the session expected by AdminDashboard.jsx.
+      // Create the session used by AdminDashboard and AdminSidebar.
       const adminSession = {
         token: data.token,
         activityId: data.activityId || null,
         id: loggedInUser.id || loggedInUser._id || "",
-        name: loggedInUser.name || "Administrator",
+        name: loggedInUser.name || "Speed Express User",
         email: loggedInUser.email || trimmedEmail,
         role: userRole,
         loggedIn: true,
       };
 
-      // Remove previous sessions to avoid conflicting data.
+      // Remove old sessions to prevent conflicting login data.
       localStorage.removeItem("speedExpressAdmin");
       sessionStorage.removeItem("speedExpressAdmin");
 
@@ -93,7 +88,7 @@ export default function Login() {
       localStorage.removeItem("speedExpressDemoLogin");
       sessionStorage.removeItem("speedExpressDemoLogin");
 
-      // Save the session according to Remember me.
+      // Save according to Remember Me.
       const storage = rememberMe ? localStorage : sessionStorage;
 
       storage.setItem(
@@ -103,8 +98,8 @@ export default function Login() {
 
       storage.setItem("speedExpressToken", data.token);
 
-      // Navigate to the admin dashboard.
-      navigate("/admin-dashboard", {
+      // Both Admin and Staff Users open the same dashboard.
+      navigate("/admin-dashboard/home", {
         replace: true,
       });
     } catch (err) {
@@ -135,7 +130,7 @@ export default function Login() {
             <h1>Welcome Back</h1>
 
             <p>
-              Login to your Speed Express admin account
+              Login to your Speed Express account
             </p>
           </div>
 
@@ -164,9 +159,7 @@ export default function Login() {
                 type="email"
                 placeholder="Enter your email address"
                 value={email}
-                onChange={(event) =>
-                  setEmail(event.target.value)
-                }
+                onChange={(event) => setEmail(event.target.value)}
                 autoComplete="username"
                 required
                 disabled={loading}
@@ -185,9 +178,7 @@ export default function Login() {
                   type={showPassword ? "text" : "password"}
                   placeholder="Enter your password"
                   value={password}
-                  onChange={(event) =>
-                    setPassword(event.target.value)
-                  }
+                  onChange={(event) => setPassword(event.target.value)}
                   autoComplete="current-password"
                   required
                   disabled={loading}
@@ -201,9 +192,7 @@ export default function Login() {
                   }
                   disabled={loading}
                   aria-label={
-                    showPassword
-                      ? "Hide password"
-                      : "Show password"
+                    showPassword ? "Hide password" : "Show password"
                   }
                 >
                   {showPassword ? "Hide" : "Show"}
