@@ -1,4 +1,4 @@
- 
+
 // ============================================================
 // SPEED EXPRESS - API SERVICE
 // File: src/services/api.js
@@ -33,10 +33,16 @@ const getLoginUser = () => {
 const getAuthToken = () => {
   const user = getLoginUser();
 
+  // Token may be stored inside the login user object.
   if (user?.token) {
     return user.token;
   }
 
+  if (user?.authToken) {
+    return user.authToken;
+  }
+
+  // Token may also be stored separately.
   return (
     localStorage.getItem("speedExpressToken") ||
     sessionStorage.getItem("speedExpressToken") ||
@@ -81,7 +87,6 @@ const fetchApi = async (
   };
 
   // Do not manually set Content-Type for FormData.
-  // The browser must generate its multipart boundary.
   const isFormData =
     typeof FormData !== "undefined" &&
     options.body instanceof FormData;
@@ -125,6 +130,7 @@ const fetchApi = async (
       `Request failed with HTTP ${response.status}.`;
 
     const error = new Error(message);
+
     error.status = response.status;
     error.response = result;
 
@@ -151,6 +157,7 @@ export const checkBackendHealth = async () => {
 
 export const createShipment = async (shipmentData) => {
   let body = shipmentData;
+
   const headers = {
     Accept: "application/json",
   };
@@ -202,7 +209,9 @@ export const getAllShipments = async () => {
 
 export const trackShipment = async (identifier) => {
   if (!identifier || !String(identifier).trim()) {
-    throw new Error("Please enter a tracking number or AWD number.");
+    throw new Error(
+      "Please enter a tracking number or AWD number."
+    );
   }
 
   return fetchApi(
@@ -314,7 +323,9 @@ export const updateShipmentStatus = async (
 
 export const deleteShipment = async (identifier) => {
   if (!identifier || !String(identifier).trim()) {
-    throw new Error("Tracking number, AWD number, or shipment ID is required.");
+    throw new Error(
+      "Tracking number, AWD number, or shipment ID is required."
+    );
   }
 
   return fetchApi(
@@ -342,7 +353,10 @@ export const getShippingLabel = async (identifier) => {
     throw new Error("Shipment identifier is required.");
   }
 
-  const headers = getAuthHeaders(true);
+  const headers = {
+    ...getAuthHeaders(true),
+    Accept: "application/pdf",
+  };
 
   let response;
 
@@ -384,7 +398,6 @@ export const downloadShippingLabel = async (identifier) => {
   const blob = await getShippingLabel(identifier);
 
   const objectUrl = URL.createObjectURL(blob);
-
   const link = document.createElement("a");
 
   link.href = objectUrl;
@@ -448,4 +461,4 @@ const api = {
 };
 
 export default api;
- 
+
