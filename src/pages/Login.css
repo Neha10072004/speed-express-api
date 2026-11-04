@@ -1,21 +1,21 @@
 
-@import url("https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700;800&family=Manrope:wght@500;600;700;800&display=swap");
+@import url("https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700;800&family=Manrope:wght@400;500;600;700;800&display=swap");
 
-/* =====================================
-   GLOBAL LOGIN PAGE
-===================================== */
+/* =========================================
+   PAGE
+========================================= */
 
 .se-login-page {
   min-height: 100vh;
   width: 100%;
-  padding: 45px 20px;
+  padding: 32px;
   display: flex;
   align-items: center;
   justify-content: center;
   background:
-    radial-gradient(circle at 10% 15%, rgba(0, 167, 223, 0.13), transparent 30%),
-    radial-gradient(circle at 90% 85%, rgba(23, 105, 170, 0.10), transparent 30%),
-    linear-gradient(135deg, #f1f7ff, #eaf3ff);
+    radial-gradient(circle at 10% 10%, rgba(0, 167, 223, 0.12), transparent 30%),
+    radial-gradient(circle at 90% 90%, rgba(23, 105, 170, 0.12), transparent 30%),
+    #edf3fa;
   font-family: "DM Sans", sans-serif;
   box-sizing: border-box;
 }
@@ -26,214 +26,687 @@
   box-sizing: border-box;
 }
 
-/* =====================================
-   LOGIN CONTAINER
-===================================== */
+/* =========================================
+   MAIN SHELL
+========================================= */
 
-.se-login-container {
+.se-login-shell {
   width: 100%;
-  max-width: 1080px;
-  margin: auto;
+  max-width: 1240px;
+  min-height: 760px;
+  display: grid;
+  grid-template-columns: 1.08fr 0.92fr;
+  overflow: hidden;
+  background: #ffffff;
+  border: 1px solid rgba(213, 226, 241, 0.9);
+  border-radius: 25px;
+  box-shadow: 0 30px 90px rgba(14, 42, 78, 0.13);
 }
 
-/* =====================================
-   LOGIN CARD
-===================================== */
+/* =========================================
+   LEFT BRAND PANEL
+========================================= */
 
-.se-login-card {
-  width: 100%;
-  min-height: 620px;
-  padding: 55px 90px;
+.se-login-brand-panel {
+  position: relative;
+  min-width: 0;
+  padding: 42px 54px 35px;
   display: flex;
   flex-direction: column;
+  overflow: hidden;
+  color: #ffffff;
+  background:
+    radial-gradient(circle at 85% 20%, rgba(0, 167, 223, 0.23), transparent 28%),
+    radial-gradient(circle at 5% 90%, rgba(23, 105, 170, 0.42), transparent 35%),
+    linear-gradient(145deg, #071d3b 0%, #092b5b 48%, #0b3d91 100%);
+}
+
+.se-login-brand-panel::before,
+.se-login-brand-panel::after {
+  content: "";
+  position: absolute;
+  right: -210px;
+  top: 250px;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 50%;
+  pointer-events: none;
+}
+
+.se-login-brand-panel::before {
+  width: 420px;
+  height: 420px;
+}
+
+.se-login-brand-panel::after {
+  width: 300px;
+  height: 300px;
+  right: -150px;
+  top: 310px;
+  border-color: rgba(255, 255, 255, 0.07);
+}
+
+.se-brand-top,
+.se-brand-content,
+.se-brand-bottom {
+  position: relative;
+  z-index: 2;
+}
+
+.se-brand-top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 15px;
+}
+
+/* =========================================
+   SPEED EXPRESS LOGO
+========================================= */
+
+.se-brand-logo-link {
+  display: inline-flex;
   align-items: center;
   justify-content: center;
+  padding: 8px 13px;
   background: #ffffff;
-  border: 1px solid #e1eaf5;
-  border-radius: 24px;
-  box-shadow: 0 22px 65px rgba(15, 53, 100, 0.12);
+  border-radius: 12px;
+  text-decoration: none;
+  box-shadow: 0 5px 20px rgba(0, 0, 0, 0.12);
+  transition: transform 0.2s ease, box-shadow 0.2s ease;
 }
 
-/* =====================================
-   HEADER / LOGO
-===================================== */
-
-.se-login-header {
-  width: 100%;
-  max-width: 420px;
-  margin: 0 auto 35px;
-  text-align: center;
+.se-brand-logo-link:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 9px 24px rgba(0, 0, 0, 0.18);
 }
 
-.se-login-logo {
+.se-brand-logo {
   display: block;
-  width: 100%;
-  max-width: 270px;
-  height: 105px;
+  width: 185px;
+  height: 62px;
   object-fit: contain;
-  margin: 0 auto 25px;
+  object-position: center;
+  filter: none;
 }
 
-.se-login-header h1 {
-  margin: 0 0 10px;
+.se-brand-category {
+  padding: 9px 12px;
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  border-radius: 7px;
+  color: #c8eaff;
+  background: rgba(255, 255, 255, 0.07);
+  font-size: 9px;
+  font-weight: 800;
+  letter-spacing: 1.5px;
+  white-space: nowrap;
+}
+
+/* =========================================
+   BRAND CONTENT
+========================================= */
+
+.se-brand-content {
+  margin-top: 85px;
+}
+
+.se-eyebrow {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  color: #8bdfff;
+  font-size: 10px;
+  font-weight: 800;
+  letter-spacing: 2.5px;
+}
+
+.se-eyebrow-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: #00c2f2;
+  box-shadow: 0 0 14px rgba(0, 194, 242, 0.8);
+}
+
+.se-brand-content h1 {
+  margin: 22px 0 18px;
+  color: #ffffff;
+  font-family: "Manrope", sans-serif;
+  font-size: clamp(39px, 4.2vw, 57px);
+  font-weight: 800;
+  line-height: 1.12;
+  letter-spacing: -2.3px;
+}
+
+.se-brand-content h1 span {
+  color: #55d8ff;
+}
+
+.se-brand-description {
+  max-width: 410px;
+  margin: 0;
+  color: #c1d2e8;
+  font-size: 14px;
+  line-height: 1.9;
+}
+
+/* =========================================
+   FEATURES
+========================================= */
+
+.se-feature-list {
+  margin-top: 32px;
+  display: flex;
+  flex-direction: column;
+  gap: 17px;
+}
+
+.se-feature-item {
+  display: flex;
+  align-items: center;
+  gap: 13px;
+  color: #eaf5ff;
+  font-size: 13px;
+  font-weight: 500;
+}
+
+.se-feature-icon {
+  width: 23px;
+  height: 23px;
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid rgba(89, 219, 255, 0.4);
+  border-radius: 7px;
+  color: #66e1ff;
+  background: rgba(0, 194, 242, 0.12);
+  font-size: 13px;
+  font-weight: 800;
+}
+
+/* =========================================
+   DECORATIVE LOGISTICS VISUAL
+========================================= */
+
+.se-logistics-visual {
+  position: relative;
+  height: 150px;
+  margin-top: 25px;
+}
+
+.se-visual-glow {
+  position: absolute;
+  width: 250px;
+  height: 100px;
+  left: 50%;
+  top: 25px;
+  transform: translateX(-50%);
+  border-radius: 50%;
+  background: rgba(0, 177, 239, 0.14);
+  filter: blur(35px);
+}
+
+.se-route-line {
+  position: absolute;
+  width: 68%;
+  height: 2px;
+  left: 16%;
+  top: 75px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.se-route-dashes {
+  flex: 1;
+  height: 2px;
+  margin: 0 10px;
+  background: repeating-linear-gradient(
+    to right,
+    rgba(99, 218, 255, 0.75) 0 7px,
+    transparent 7px 14px
+  );
+}
+
+.se-route-point {
+  width: 13px;
+  height: 13px;
+  flex-shrink: 0;
+  border: 3px solid #77e4ff;
+  border-radius: 50%;
+  background: #0b3d91;
+  box-shadow: 0 0 15px rgba(80, 220, 255, 0.6);
+}
+
+.se-visual-center {
+  position: absolute;
+  left: 50%;
+  top: 43px;
+  width: 65px;
+  height: 65px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transform: translateX(-50%);
+  border: 1px solid rgba(118, 226, 255, 0.45);
+  border-radius: 19px;
+  background: linear-gradient(145deg, #0c65b0, #092b5b);
+  box-shadow: 0 12px 35px rgba(0, 0, 0, 0.22);
+}
+
+.se-visual-center-icon {
+  color: #ffffff;
+  font-family: "Manrope", sans-serif;
+  font-size: 20px;
+  font-weight: 800;
+  letter-spacing: -1px;
+}
+
+.se-visual-card {
+  position: absolute;
+  z-index: 2;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 13px;
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.1);
+  box-shadow: 0 8px 25px rgba(0, 0, 0, 0.12);
+  backdrop-filter: blur(12px);
+}
+
+.se-visual-card-one {
+  left: 0;
+  top: 5px;
+}
+
+.se-visual-card-two {
+  right: 0;
+  bottom: 0;
+}
+
+.se-visual-card-icon {
+  width: 27px;
+  height: 27px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 8px;
+  color: #65e0ff;
+  background: rgba(0, 194, 242, 0.16);
+  font-size: 18px;
+  font-weight: 700;
+}
+
+.se-visual-card strong,
+.se-visual-card small {
+  display: block;
+}
+
+.se-visual-card strong {
+  color: #ffffff;
+  font-size: 10px;
+  font-weight: 700;
+}
+
+.se-visual-card small {
+  margin-top: 3px;
+  color: #c0d7ee;
+  font-size: 9px;
+}
+
+.se-visual-status-dot {
+  width: 9px;
+  height: 9px;
+  flex-shrink: 0;
+  border-radius: 50%;
+  background: #45e5a0;
+  box-shadow: 0 0 10px rgba(69, 229, 160, 0.7);
+}
+
+/* =========================================
+   BRAND FOOTER
+========================================= */
+
+.se-brand-bottom {
+  margin-top: auto;
+  padding-top: 28px;
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 15px;
+  border-top: 1px solid rgba(255, 255, 255, 0.13);
+}
+
+.se-brand-bottom strong,
+.se-brand-bottom div > span {
+  display: block;
+}
+
+.se-brand-bottom strong {
+  color: #ffffff;
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.se-brand-bottom div > span {
+  margin-top: 5px;
+  color: #9bb6d2;
+  font-size: 10px;
+}
+
+.se-copyright {
+  color: #9bb6d2;
+  font-size: 10px;
+  white-space: nowrap;
+}
+
+/* =========================================
+   RIGHT LOGIN PANEL
+========================================= */
+
+.se-login-form-panel {
+  min-width: 0;
+  padding: 42px 65px 32px;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  background: #ffffff;
+}
+
+.se-login-form-top {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 12px;
+}
+
+.se-secure-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  color: #66809e;
+  font-size: 9px;
+  font-weight: 800;
+  letter-spacing: 1.5px;
+}
+
+.se-secure-icon {
+  color: #00a7df;
+  font-size: 11px;
+}
+
+.se-mobile-logo {
+  display: none;
+}
+
+/* =========================================
+   LOGIN CONTENT
+========================================= */
+
+.se-login-content {
+  width: 100%;
+  max-width: 410px;
+  margin: 55px auto 45px;
+}
+
+.se-login-heading {
+  margin-bottom: 35px;
+}
+
+.se-login-welcome {
+  color: #1598cb;
+  font-size: 10px;
+  font-weight: 800;
+  letter-spacing: 2px;
+}
+
+.se-login-heading h2 {
+  margin: 12px 0 10px;
   color: #092b5b;
   font-family: "Manrope", sans-serif;
-  font-size: 34px;
+  font-size: 35px;
   font-weight: 800;
-  line-height: 1.25;
+  letter-spacing: -1.2px;
 }
 
-.se-login-header p {
+.se-login-heading p {
   margin: 0;
-  color: #718096;
-  font-size: 15px;
-  line-height: 1.6;
+  color: #8291a5;
+  font-size: 13px;
+  line-height: 1.8;
 }
 
-/* =====================================
-   LOGIN FORM
-===================================== */
+/* =========================================
+   FORM FIELDS
+========================================= */
 
 .se-login-form {
   width: 100%;
-  max-width: 420px;
-  margin: 0 auto;
 }
 
 .se-login-field {
   width: 100%;
-  margin-bottom: 22px;
+  margin-bottom: 23px;
 }
 
-.se-login-field label {
+.se-login-field > label {
   display: block;
-  margin-bottom: 9px;
+  margin-bottom: 10px;
   color: #243b5a;
-  font-size: 13px;
+  font-size: 12px;
   font-weight: 700;
 }
 
-/* Email and password inputs */
-
-.se-login-field > input,
-.se-login-password-wrapper input {
-  display: block;
-  width: 100%;
-  height: 52px;
-  padding: 0 15px;
-  border: 1px solid #d7e2ef;
-  border-radius: 9px;
-  outline: none;
-  background: #fafdff;
-  color: #183153;
-  font-family: "DM Sans", sans-serif;
-  font-size: 14px;
-  transition: border-color 0.2s ease, box-shadow 0.2s ease;
-}
-
-.se-login-field input::placeholder {
-  color: #a0aec0;
-}
-
-.se-login-field > input:focus,
-.se-login-password-wrapper input:focus {
-  border-color: #1769aa;
-  background: #ffffff;
-  box-shadow: 0 0 0 4px rgba(23, 105, 170, 0.10);
-}
-
-/* =====================================
-   PASSWORD FIELD
-===================================== */
-
-.se-login-password-wrapper {
+.se-input-wrapper {
   position: relative;
   width: 100%;
 }
 
-.se-login-password-wrapper input {
-  padding-right: 75px;
+.se-input-wrapper input {
+  display: block;
+  width: 100%;
+  height: 56px;
+  padding: 0 52px;
+  border: 1px solid #e0e8f1;
+  border-radius: 11px;
+  outline: none;
+  background: #f9fbfe;
+  color: #183153;
+  font-family: "DM Sans", sans-serif;
+  font-size: 13px;
+  transition:
+    border-color 0.2s ease,
+    box-shadow 0.2s ease,
+    background 0.2s ease;
 }
 
-.se-login-password-toggle {
+.se-input-wrapper input::placeholder {
+  color: #a4b0bf;
+}
+
+.se-input-wrapper input:focus {
+  border-color: #1598cb;
+  background: #ffffff;
+  box-shadow: 0 0 0 4px rgba(0, 167, 223, 0.09);
+}
+
+.se-input-wrapper input:disabled {
+  opacity: 0.65;
+  cursor: not-allowed;
+}
+
+.se-input-icon {
+  position: absolute;
+  z-index: 1;
+  top: 50%;
+  left: 17px;
+  width: 18px;
+  height: 18px;
+  transform: translateY(-50%);
+  pointer-events: none;
+}
+
+.se-input-icon svg {
+  width: 100%;
+  height: 100%;
+  fill: none;
+  stroke: #8da2b9;
+  stroke-width: 1.6;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+/* =========================================
+   PASSWORD TOGGLE
+========================================= */
+
+.se-password-toggle {
   position: absolute;
   top: 50%;
   right: 13px;
-  padding: 6px 8px;
+  padding: 7px;
+  transform: translateY(-50%);
   border: none;
   background: transparent;
-  color: #1769aa;
+  color: #1688bb;
   font-family: "DM Sans", sans-serif;
-  font-size: 12px;
-  font-weight: 700;
+  font-size: 11px;
+  font-weight: 800;
   cursor: pointer;
-  transform: translateY(-50%);
 }
 
-.se-login-password-toggle:hover {
+.se-password-toggle:hover {
   color: #092b5b;
 }
 
-.se-login-password-toggle:disabled {
+.se-password-toggle:disabled {
   opacity: 0.5;
   cursor: not-allowed;
 }
 
-/* =====================================
+/* =========================================
    REMEMBER ME
-===================================== */
+========================================= */
 
 .se-login-options {
   width: 100%;
+  margin: 5px 0 25px;
   display: flex;
   align-items: center;
   justify-content: space-between;
-  margin: 4px 0 25px;
+  gap: 10px;
 }
 
-.se-login-remember {
+.se-remember-control {
   display: inline-flex;
   align-items: center;
   gap: 9px;
-  color: #64748b;
-  font-size: 13px;
+  color: #66788d;
+  font-size: 12px;
   cursor: pointer;
 }
 
-.se-login-remember input {
-  width: 16px;
-  height: 16px;
-  margin: 0;
-  accent-color: #1769aa;
-  cursor: pointer;
+.se-remember-control input {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  opacity: 0;
 }
 
-/* =====================================
-   LOGIN BUTTON
-===================================== */
-
-.se-login-button {
-  width: 100%;
-  min-height: 53px;
+.se-custom-checkbox {
+  width: 17px;
+  height: 17px;
+  flex-shrink: 0;
   display: flex;
   align-items: center;
   justify-content: center;
+  border: 1px solid #cbd7e4;
+  border-radius: 5px;
+  background: #ffffff;
+  transition: all 0.2s ease;
+}
+
+.se-custom-checkbox svg {
+  width: 13px;
+  height: 13px;
+  fill: none;
+  stroke: #ffffff;
+  stroke-width: 2;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  opacity: 0;
+}
+
+.se-remember-control input:checked + .se-custom-checkbox {
+  border-color: #087fc0;
+  background: #087fc0;
+}
+
+.se-remember-control input:checked + .se-custom-checkbox svg {
+  opacity: 1;
+}
+
+.se-remember-control input:focus-visible + .se-custom-checkbox {
+  outline: 3px solid rgba(0, 167, 223, 0.25);
+  outline-offset: 3px;
+}
+
+.se-session-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  color: #8a9aad;
+  font-size: 10px;
+  white-space: nowrap;
+}
+
+.se-session-label span {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: #31c48d;
+}
+
+/* =========================================
+   LOGIN BUTTON
+========================================= */
+
+.se-login-button {
+  position: relative;
+  width: 100%;
+  min-height: 56px;
+  padding: 0 20px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
   border: none;
-  border-radius: 9px;
-  background: linear-gradient(110deg, #0b3d91, #1769aa);
+  border-radius: 11px;
+  background: linear-gradient(
+    110deg,
+    #0b3d91,
+    #087fbd 65%,
+    #00a7df
+  );
   color: #ffffff;
   font-family: "DM Sans", sans-serif;
-  font-size: 15px;
-  font-weight: 700;
+  font-size: 13px;
+  font-weight: 800;
   letter-spacing: 0.2px;
   cursor: pointer;
-  box-shadow: 0 8px 18px rgba(11, 61, 145, 0.18);
-  transition: transform 0.2s ease, box-shadow 0.2s ease;
+  box-shadow: 0 10px 24px rgba(11, 61, 145, 0.2);
+  transition:
+    transform 0.2s ease,
+    box-shadow 0.2s ease,
+    filter 0.2s ease;
 }
 
 .se-login-button:hover {
   transform: translateY(-2px);
-  box-shadow: 0 12px 24px rgba(11, 61, 145, 0.25);
+  filter: brightness(1.06);
+  box-shadow: 0 14px 28px rgba(11, 61, 145, 0.26);
 }
 
 .se-login-button:active {
@@ -241,151 +714,419 @@
 }
 
 .se-login-button:disabled {
-  opacity: 0.65;
+  opacity: 0.7;
   cursor: not-allowed;
   transform: none;
 }
 
-/* =====================================
+.se-button-arrow {
+  font-size: 20px;
+  line-height: 1;
+}
+
+.se-button-spinner {
+  width: 16px;
+  height: 16px;
+  border: 2px solid rgba(255, 255, 255, 0.35);
+  border-top-color: #ffffff;
+  border-radius: 50%;
+  animation: se-spin 0.7s linear infinite;
+}
+
+@keyframes se-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+/* =========================================
    ERROR MESSAGE
-===================================== */
+========================================= */
 
 .se-login-error {
   width: 100%;
   margin-bottom: 20px;
-  padding: 12px 15px;
+  padding: 13px 14px;
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
   border: 1px solid #fecaca;
-  border-radius: 8px;
-  background: #fff1f2;
+  border-radius: 9px;
+  background: #fff5f5;
   color: #b42318;
-  font-size: 13px;
-  line-height: 1.5;
+  font-size: 12px;
+  line-height: 1.6;
 }
 
-/* =====================================
-   FOOTER
-===================================== */
+.se-error-icon {
+  width: 17px;
+  height: 17px;
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 50%;
+  background: #fee2e2;
+  color: #b42318;
+  font-size: 11px;
+  font-weight: 800;
+}
 
-.se-login-footer {
-  width: 100%;
-  max-width: 420px;
-  margin: 28px auto 0;
+/* =========================================
+   AUTHORIZED NOTE
+========================================= */
+
+.se-authorized-note {
+  margin-top: 30px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 9px;
+  color: #8091a5;
+  font-size: 9px;
+  font-weight: 800;
+  letter-spacing: 1.5px;
+}
+
+.se-authorized-icon {
+  color: #13a5d5;
+  font-size: 10px;
+}
+
+.se-help-text {
+  max-width: 330px;
+  margin: 14px auto 0;
+  color: #98a5b5;
+  font-size: 11px;
+  line-height: 1.8;
   text-align: center;
 }
 
-.se-login-footer p {
-  margin: 0 0 13px;
-  color: #718096;
-  font-size: 14px;
+/* =========================================
+   FORM PANEL FOOTER
+========================================= */
+
+.se-login-panel-footer {
+  padding-top: 22px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  border-top: 1px solid #edf1f6;
 }
 
-.se-login-footer a {
-  color: #1769aa;
+.se-back-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  color: #56718f;
+  font-size: 11px;
   font-weight: 700;
   text-decoration: none;
   transition: color 0.2s ease;
 }
 
-.se-login-footer a:hover {
-  color: #092b5b;
-  text-decoration: underline;
+.se-back-link span {
+  font-size: 17px;
 }
 
-.se-login-home-link {
-  display: inline-block;
-  font-size: 13px;
+.se-back-link:hover {
+  color: #087fbd;
 }
 
-/* =====================================
-   FOCUS ACCESSIBILITY
-===================================== */
+.se-portal-caption {
+  color: #a1adba;
+  font-size: 10px;
+  text-align: right;
+}
+
+/* =========================================
+   ACCESSIBILITY
+========================================= */
 
 .se-login-page button:focus-visible,
 .se-login-page a:focus-visible,
 .se-login-page input:focus-visible {
-  outline: 3px solid rgba(0, 167, 223, 0.35);
   outline-offset: 3px;
 }
 
-/* =====================================
+.se-login-page button:focus-visible,
+.se-login-page a:focus-visible {
+  outline: 3px solid rgba(0, 167, 223, 0.35);
+}
+
+/* =========================================
    TABLET
-===================================== */
+========================================= */
 
-@media (max-width: 768px) {
+@media (max-width: 1050px) {
   .se-login-page {
-    padding: 35px 18px;
+    padding: 22px;
   }
 
-  .se-login-card {
-    min-height: auto;
-    padding: 45px 45px;
+  .se-login-shell {
+    min-height: 700px;
+    grid-template-columns: 1fr 1fr;
   }
 
-  .se-login-header h1 {
-    font-size: 30px;
+  .se-login-brand-panel {
+    padding: 35px 35px 30px;
+  }
+
+  .se-login-form-panel {
+    padding: 35px 38px 28px;
+  }
+
+  .se-brand-category {
+    font-size: 8px;
+    letter-spacing: 1px;
+  }
+
+  .se-brand-logo {
+    width: 155px;
+    height: 58px;
+  }
+
+  .se-brand-content {
+    margin-top: 70px;
+  }
+
+  .se-brand-content h1 {
+    font-size: 43px;
   }
 }
 
-/* =====================================
+/* =========================================
+   SMALL TABLET
+========================================= */
+
+@media (max-width: 760px) {
+  .se-login-page {
+    padding: 18px;
+    align-items: flex-start;
+  }
+
+  .se-login-shell {
+    max-width: 520px;
+    min-height: auto;
+    grid-template-columns: 1fr;
+    border-radius: 20px;
+  }
+
+  .se-login-brand-panel {
+    min-height: 470px;
+    padding: 30px 32px 25px;
+  }
+
+  .se-brand-content {
+    margin-top: 50px;
+  }
+
+  .se-brand-content h1 {
+    font-size: 44px;
+  }
+
+  .se-logistics-visual {
+    max-width: 430px;
+  }
+
+  .se-login-form-panel {
+    padding: 30px 38px 25px;
+  }
+
+  .se-login-content {
+    margin: 35px auto;
+  }
+}
+
+/* =========================================
    MOBILE
-===================================== */
+========================================= */
 
 @media (max-width: 480px) {
   .se-login-page {
-    padding: 20px 13px;
+    padding: 0;
+    background: #ffffff;
   }
 
-  .se-login-card {
-    padding: 35px 22px;
-    border-radius: 17px;
+  .se-login-shell {
+    min-height: 100vh;
+    border: none;
+    border-radius: 0;
+    box-shadow: none;
   }
 
-  .se-login-logo {
-    max-width: 230px;
-    height: 90px;
-    margin-bottom: 20px;
+  .se-login-brand-panel {
+    min-height: 390px;
+    padding: 25px 23px 23px;
   }
 
-  .se-login-header {
-    margin-bottom: 28px;
+  .se-brand-top {
+    align-items: flex-start;
   }
 
-  .se-login-header h1 {
-    font-size: 27px;
+  .se-brand-logo-link {
+    padding: 6px 9px;
+    border-radius: 9px;
   }
 
-  .se-login-header p {
-    font-size: 13px;
+  .se-brand-logo {
+    width: 145px;
+    height: 52px;
+  }
+
+  .se-brand-category {
+    max-width: 130px;
+    padding: 8px;
+    font-size: 7px;
+    white-space: normal;
+    text-align: center;
+  }
+
+  .se-brand-content {
+    margin-top: 43px;
+  }
+
+  .se-brand-content h1 {
+    margin-top: 17px;
+    font-size: 39px;
+    letter-spacing: -1.5px;
+  }
+
+  .se-brand-description {
+    max-width: 340px;
+    font-size: 12px;
+    line-height: 1.75;
+  }
+
+  .se-feature-list {
+    margin-top: 22px;
+    gap: 12px;
+  }
+
+  .se-feature-item {
+    font-size: 11px;
+  }
+
+  .se-feature-icon {
+    width: 20px;
+    height: 20px;
+    font-size: 11px;
+  }
+
+  .se-logistics-visual {
+    display: none;
+  }
+
+  .se-brand-bottom {
+    margin-top: 28px;
+    padding-top: 17px;
+  }
+
+  .se-brand-bottom strong {
+    font-size: 10px;
+  }
+
+  .se-brand-bottom div > span,
+  .se-copyright {
+    font-size: 8px;
+  }
+
+  .se-login-form-panel {
+    min-height: 570px;
+    padding: 25px 24px 23px;
+  }
+
+  .se-login-form-top {
+    justify-content: space-between;
+  }
+
+  .se-mobile-logo {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    padding: 4px;
+    background: #ffffff;
+    border: 1px solid #edf1f6;
+    border-radius: 8px;
+  }
+
+  .se-mobile-logo img {
+    display: block;
+    width: 120px;
+    height: 40px;
+    object-fit: contain;
+  }
+
+  .se-secure-label {
+    font-size: 8px;
+  }
+
+  .se-login-content {
+    margin: 35px auto;
+  }
+
+  .se-login-heading {
+    margin-bottom: 27px;
+  }
+
+  .se-login-heading h2 {
+    font-size: 30px;
+  }
+
+  .se-login-heading p {
+    font-size: 12px;
   }
 
   .se-login-field {
-    margin-bottom: 19px;
+    margin-bottom: 20px;
   }
 
-  .se-login-field > input,
-  .se-login-password-wrapper input {
-    height: 49px;
-    font-size: 13px;
+  .se-input-wrapper input {
+    height: 53px;
+    font-size: 12px;
+  }
+
+  .se-login-options {
+    margin-bottom: 22px;
   }
 
   .se-login-button {
-    min-height: 50px;
+    min-height: 53px;
   }
 
-  .se-login-footer p {
-    font-size: 13px;
+  .se-authorized-note {
+    margin-top: 25px;
+    font-size: 8px;
+  }
+
+  .se-help-text {
+    font-size: 10px;
+  }
+
+  .se-login-panel-footer {
+    padding-top: 18px;
+  }
+
+  .se-back-link {
+    font-size: 10px;
+  }
+
+  .se-portal-caption {
+    font-size: 8px;
   }
 }
 
-/* =====================================
+/* =========================================
    REDUCED MOTION
-===================================== */
+========================================= */
 
 @media (prefers-reduced-motion: reduce) {
   .se-login-page *,
   .se-login-page *::before,
   .se-login-page *::after {
-    transition: none !important;
     animation: none !important;
+    transition: none !important;
+    scroll-behavior: auto !important;
   }
 }
