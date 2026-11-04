@@ -738,3 +738,16 @@
     width: 100%;
   }
 }
+.settings-booking-count {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 38px;
+  padding: 6px 12px;
+  border-radius: 20px;
+  background: #e6f4ff;
+  color: #0b3d91;
+  font-size: 14px;
+  font-weight: 700;
+  border: 1px solid #b9ddff;
+}

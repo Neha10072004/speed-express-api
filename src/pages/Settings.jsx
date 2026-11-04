@@ -1,3 +1,4 @@
+
 import React, { useCallback, useEffect, useState } from "react";
 import "./Settings.css";
 import UserManagement from "../components/UserManagement";
@@ -83,6 +84,17 @@ function getRole(user) {
   return String(user?.role || "user").toLowerCase();
 }
 
+function getBookingCount(activity) {
+  const count = Number(
+    activity?.bookingsAdded ??
+    activity?.bookingCount ??
+    activity?.totalBookings ??
+    0
+  );
+
+  return Number.isFinite(count) && count >= 0 ? count : 0;
+}
+
 export default function Settings() {
   const [activeTab, setActiveTab] = useState("profile");
 
@@ -125,8 +137,8 @@ export default function Settings() {
   const [activitySearch, setActivitySearch] = useState("");
 
   const isAdmin =
-  Boolean(admin) &&
-  String(admin.role || "").trim().toLowerCase() === "admin";
+    Boolean(admin) &&
+    String(admin.role || "").trim().toLowerCase() === "admin";
 
   const regularUserCount = users.filter(
     (user) => getRole(user) === "user"
@@ -144,7 +156,6 @@ export default function Settings() {
 
     try {
       const data = await apiRequest("/admin/users");
-
       setUsers(data.users || data.data?.users || []);
     } catch (err) {
       setError(err.message || "Unable to load users.");
@@ -215,7 +226,11 @@ export default function Settings() {
         email: profile.email.trim(),
       };
 
-      localStorage.setItem(
+      const storage = localStorage.getItem("speedExpressAdmin")
+        ? localStorage
+        : sessionStorage;
+
+      storage.setItem(
         "speedExpressAdmin",
         JSON.stringify(updatedAdmin)
       );
@@ -971,7 +986,7 @@ export default function Settings() {
                 <div>
                   <h3>Login Activity</h3>
                   <p>
-                    Review user login and logout activity in India time.
+                    Review user login, logout and booking activity in India time.
                   </p>
                 </div>
                 <div className="settings-section-icon">🕒</div>
@@ -991,6 +1006,16 @@ export default function Settings() {
                         (item) => !item.logoutAt && item.isActive !== false
                       ).length
                     }
+                  </strong>
+                </div>
+
+                <div>
+                  <span>Total Bookings</span>
+                  <strong>
+                    {activities.reduce(
+                      (total, item) => total + getBookingCount(item),
+                      0
+                    )}
                   </strong>
                 </div>
               </div>
@@ -1029,6 +1054,7 @@ export default function Settings() {
                         <th>Role</th>
                         <th>Login Time</th>
                         <th>Logout Time</th>
+                        <th>Bookings Added</th>
                         <th>Status</th>
                       </tr>
                     </thead>
@@ -1048,6 +1074,8 @@ export default function Settings() {
 
                         const isActive =
                           !logoutTime && activity.isActive !== false;
+
+                        const bookingsAdded = getBookingCount(activity);
 
                         return (
                           <tr
@@ -1071,7 +1099,14 @@ export default function Settings() {
                             </td>
 
                             <td>{formatDateTime(loginTime)}</td>
+
                             <td>{formatDateTime(logoutTime)}</td>
+
+                            <td>
+                              <span className="settings-booking-count">
+                                {bookingsAdded}
+                              </span>
+                            </td>
 
                             <td>
                               <span
@@ -1088,7 +1123,7 @@ export default function Settings() {
 
                       {filteredActivities.length === 0 && (
                         <tr>
-                          <td colSpan="5" className="settings-table-empty">
+                          <td colSpan="6" className="settings-table-empty">
                             No login activity found.
                           </td>
                         </tr>
