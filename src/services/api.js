@@ -1,11 +1,17 @@
+ 
+// ============================================================
+// SPEED EXPRESS - API SERVICE
+// File: src/services/api.js
+// ============================================================
 
-const API_URL = (
-  import.meta.env.VITE_API_URL || "https://api.speedexp.in/api"
+export const API_URL = (
+  import.meta.env.VITE_API_URL ||
+  "https://api.speedexp.in/api"
 ).replace(/\/+$/, "");
 
-/* =====================================
-   AUTHENTICATION HELPERS
-===================================== */
+// ============================================================
+// LOGIN SESSION
+// ============================================================
 
 const getLoginUser = () => {
   try {
@@ -20,390 +26,426 @@ const getLoginUser = () => {
   }
 };
 
-const getAuthHeaders = (required = false) => {
+// ============================================================
+// AUTHENTICATION TOKEN
+// ============================================================
+
+const getAuthToken = () => {
   const user = getLoginUser();
-  const token = user?.token;
+
+  if (user?.token) {
+    return user.token;
+  }
+
+  return (
+    localStorage.getItem("speedExpressToken") ||
+    sessionStorage.getItem("speedExpressToken") ||
+    null
+  );
+};
+
+// ============================================================
+// AUTHENTICATION HEADERS
+// ============================================================
+
+const getAuthHeaders = (required = false) => {
+  const token = getAuthToken();
 
   if (required && !token) {
-    throw new Error("Please log in before performing this action.");
+    throw new Error(
+      "Authentication token not found. Please log in again."
+    );
   }
 
   return token
-    ? { Authorization: `Bearer ${token}` }
+    ? {
+        Authorization: `Bearer ${token}`,
+      }
     : {};
 };
 
-/* =====================================
-   COMMON HELPERS
-===================================== */
-
-const validateNumber = (value, message) => {
-  const number = String(value || "").trim();
-
-  if (!number) {
-    throw new Error(message);
-  }
-
-  return number;
-};
-
-const getShipmentUrl = (number) =>
-  `${API_URL}/shipments/${encodeURIComponent(number)}`;
-
-const parseResponse = async (response) => {
-  const contentType =
-    response.headers.get("content-type") || "";
-
-  if (contentType.includes("application/json")) {
-    return response.json();
-  }
-
-  return response.text();
-};
-
-const getErrorMessage = (data, fallback) => {
-  if (
-    data &&
-    typeof data === "object" &&
-    typeof data.message === "string"
-  ) {
-    return data.message;
-  }
-
-  if (typeof data === "string" && data.trim()) {
-    return data;
-  }
-
-  return fallback;
-};
+// ============================================================
+// COMMON API REQUEST FUNCTION
+// ============================================================
 
 const fetchApi = async (
   url,
   options = {},
   authRequired = false
 ) => {
+  const authHeaders = getAuthHeaders(authRequired);
+
+  const headers = {
+    ...authHeaders,
+    ...(options.headers || {}),
+  };
+
+  // Do not manually set Content-Type for FormData.
+  // The browser must generate its multipart boundary.
+  const isFormData =
+    typeof FormData !== "undefined" &&
+    options.body instanceof FormData;
+
+  if (isFormData) {
+    delete headers["Content-Type"];
+    delete headers["content-type"];
+  }
+
   let response;
 
   try {
-    const headers = {
-      ...getAuthHeaders(authRequired),
-      ...(options.headers || {}),
-    };
-
     response = await fetch(url, {
       ...options,
       headers,
     });
   } catch (error) {
-    if (error instanceof TypeError) {
-      throw new Error(
-        `Cannot connect to Speed Express API at ${API_URL}. ` +
-        "Check your internet connection, backend server, and CORS settings."
-      );
-    }
+    console.error("API connection error:", error);
 
-    throw error;
-  }
-
-  const data = await parseResponse(response);
-
-  if (!response.ok) {
     throw new Error(
-      getErrorMessage(
-        data,
-        `Request failed with HTTP ${response.status}.`
-      )
+      "Unable to connect to the Speed Express server. Please check your internet connection."
     );
-  }
-
-  return data;
-};
-
-/* =====================================
-   BACKEND HEALTH CHECK
-   Public endpoint
-===================================== */
-
-export const checkBackendHealth = async () => {
-  return fetchApi(`${API_URL}/health`);
-};
-
-/* =====================================
-   CREATE SHIPMENT
-   Admin + Staff
-===================================== */
-
-export const createShipment = async (shipmentData) => {
-  try {
-    const data = await fetchApi(
-      `${API_URL}/shipments`,
-      {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify(shipmentData),
-      },
-      true
-    );
-
-    console.log("Create Shipment Response:", data);
-    return data;
-  } catch (error) {
-    console.error("createShipment Error:", error);
-    throw error;
-  }
-};
-
-/* =====================================
-   GET ALL SHIPMENTS
-   Admin + Staff
-===================================== */
-
-export const getAllShipments = async () => {
-  try {
-    const data = await fetchApi(
-      `${API_URL}/shipments`,
-      {},
-      true
-    );
-
-    console.log("All Shipments Response:", data);
-    return data;
-  } catch (error) {
-    console.error("getAllShipments Error:", error);
-    throw error;
-  }
-};
-
-/* =====================================
-   TRACK SHIPMENT
-   TRACKING NUMBER OR AWD NUMBER
-
-   Public endpoint
-===================================== */
-
-export const trackShipment = async (trackingNumber) => {
-  const number = validateNumber(
-    trackingNumber,
-    "Please enter Tracking Number or AWD Number."
-  );
-
-  try {
-    const data = await fetchApi(getShipmentUrl(number));
-
-    console.log("Track Shipment Response:", data);
-    return data;
-  } catch (error) {
-    console.error("trackShipment Error:", error);
-    throw error;
-  }
-};
-
-/* =====================================
-   UPDATE SHIPMENT STATUS
-   Admin + Staff
-===================================== */
-
-export const updateShipmentStatus = async (
-  trackingNumber,
-  statusData
-) => {
-  const number = validateNumber(
-    trackingNumber,
-    "Tracking Number or AWD Number is required."
-  );
-
-  const formData = new FormData();
-
-  formData.append("status", statusData.status);
-  formData.append("location", statusData.location);
-  formData.append("remarks", statusData.remarks || "");
-  formData.append("eventDateTime", statusData.eventDateTime);
-
-  if (statusData.proofFile) {
-    formData.append("proofFile", statusData.proofFile);
-  }
-
-  try {
-    return await fetchApi(
-      `${API_URL}/shipments/${encodeURIComponent(number)}/status`,
-      {
-        method: "PATCH",
-        body: formData,
-      },
-      true
-    );
-  } catch (error) {
-    console.error("updateShipmentStatus Error:", error);
-    throw error;
-  }
-};
-
-/* =====================================
-   FETCH SHIPPING LABEL PDF
-   Admin + Staff
-===================================== */
-
-const fetchShippingLabel = async (trackingNumber) => {
-  const number = validateNumber(
-    trackingNumber,
-    "Tracking Number is missing."
-  );
-
-  const url = `${getShipmentUrl(number)}/label`;
-
-  let response;
-
-  try {
-    response = await fetch(url, {
-      headers: getAuthHeaders(true),
-    });
-  } catch (error) {
-    if (error instanceof TypeError) {
-      throw new Error(
-        `Cannot connect to Speed Express API at ${API_URL}.`
-      );
-    }
-
-    throw error;
   }
 
   const contentType =
     response.headers.get("content-type") || "";
 
-  if (!response.ok) {
-    let message =
-      `Failed to retrieve shipping label. HTTP ${response.status}.`;
+  let result;
 
-    if (contentType.includes("application/json")) {
-      const errorData = await response.json();
-      message = getErrorMessage(errorData, message);
-    } else {
-      const errorText = await response.text();
-
-      if (errorText.trim()) {
-        message = errorText;
-      }
-    }
-
-    throw new Error(message);
+  if (contentType.includes("application/json")) {
+    result = await response.json().catch(() => null);
+  } else {
+    result = await response.text().catch(() => "");
   }
 
-  if (!contentType.toLowerCase().includes("application/pdf")) {
+  if (!response.ok) {
+    const message =
+      result?.message ||
+      result?.error ||
+      (typeof result === "string" && result) ||
+      `Request failed with HTTP ${response.status}.`;
+
+    const error = new Error(message);
+    error.status = response.status;
+    error.response = result;
+
+    throw error;
+  }
+
+  return result;
+};
+
+// ============================================================
+// BACKEND HEALTH CHECK
+// GET /api/health
+// ============================================================
+
+export const checkBackendHealth = async () => {
+  return fetchApi(`${API_URL}/health`);
+};
+
+// ============================================================
+// CREATE SHIPMENT
+// POST /api/shipments
+// Admin / Staff
+// ============================================================
+
+export const createShipment = async (shipmentData) => {
+  let body = shipmentData;
+  const headers = {
+    Accept: "application/json",
+  };
+
+  if (
+    shipmentData &&
+    typeof shipmentData === "object" &&
+    !(shipmentData instanceof FormData)
+  ) {
+    headers["Content-Type"] = "application/json";
+    body = JSON.stringify(shipmentData);
+  }
+
+  return fetchApi(
+    `${API_URL}/shipments`,
+    {
+      method: "POST",
+      headers,
+      body,
+    },
+    true
+  );
+};
+
+// ============================================================
+// GET ALL SHIPMENTS
+// GET /api/shipments
+// Admin / Staff
+// ============================================================
+
+export const getAllShipments = async () => {
+  return fetchApi(
+    `${API_URL}/shipments`,
+    {
+      method: "GET",
+      headers: {
+        Accept: "application/json",
+      },
+    },
+    true
+  );
+};
+
+// ============================================================
+// GET ONE SHIPMENT
+// GET /api/shipments/:identifier
+// Public tracking
+// ============================================================
+
+export const trackShipment = async (identifier) => {
+  if (!identifier || !String(identifier).trim()) {
+    throw new Error("Please enter a tracking number or AWD number.");
+  }
+
+  return fetchApi(
+    `${API_URL}/shipments/${encodeURIComponent(
+      String(identifier).trim()
+    )}`,
+    {
+      method: "GET",
+      headers: {
+        Accept: "application/json",
+      },
+    }
+  );
+};
+
+// ============================================================
+// UPDATE SHIPMENT DETAILS
+// PUT /api/shipments/:identifier
+// Admin / Staff
+// ============================================================
+
+export const updateShipment = async (
+  identifier,
+  shipmentData
+) => {
+  if (!identifier) {
+    throw new Error("Shipment identifier is required.");
+  }
+
+  let body = shipmentData;
+
+  const headers = {
+    Accept: "application/json",
+  };
+
+  if (
+    shipmentData &&
+    typeof shipmentData === "object" &&
+    !(shipmentData instanceof FormData)
+  ) {
+    headers["Content-Type"] = "application/json";
+    body = JSON.stringify(shipmentData);
+  }
+
+  return fetchApi(
+    `${API_URL}/shipments/${encodeURIComponent(identifier)}`,
+    {
+      method: "PUT",
+      headers,
+      body,
+    },
+    true
+  );
+};
+
+// ============================================================
+// UPDATE SHIPMENT STATUS
+// PATCH /api/shipments/:trackingNumber/status
+// Admin / Staff
+// ============================================================
+
+export const updateShipmentStatus = async (
+  identifier,
+  status,
+  location = "",
+  remarks = "",
+  proofFile = null,
+  eventDateTime = ""
+) => {
+  if (!identifier) {
+    throw new Error("Tracking number is required.");
+  }
+
+  if (!status) {
+    throw new Error("Shipment status is required.");
+  }
+
+  const formData = new FormData();
+
+  formData.append("status", status);
+  formData.append("location", location);
+  formData.append("remarks", remarks);
+
+  if (eventDateTime) {
+    formData.append("eventDateTime", eventDateTime);
+  }
+
+  if (proofFile) {
+    formData.append("proofFile", proofFile);
+  }
+
+  return fetchApi(
+    `${API_URL}/shipments/${encodeURIComponent(
+      identifier
+    )}/status`,
+    {
+      method: "PATCH",
+      body: formData,
+    },
+    true
+  );
+};
+
+// ============================================================
+// DELETE SHIPMENT
+// DELETE /api/shipments/:identifier
+// Admin
+// ============================================================
+
+export const deleteShipment = async (identifier) => {
+  if (!identifier || !String(identifier).trim()) {
+    throw new Error("Tracking number, AWD number, or shipment ID is required.");
+  }
+
+  return fetchApi(
+    `${API_URL}/shipments/${encodeURIComponent(
+      String(identifier).trim()
+    )}`,
+    {
+      method: "DELETE",
+      headers: {
+        Accept: "application/json",
+      },
+    },
+    true
+  );
+};
+
+// ============================================================
+// GET SHIPPING LABEL
+// GET /api/shipments/:identifier/label
+// Admin / Staff
+// ============================================================
+
+export const getShippingLabel = async (identifier) => {
+  if (!identifier) {
+    throw new Error("Shipment identifier is required.");
+  }
+
+  const headers = getAuthHeaders(true);
+
+  let response;
+
+  try {
+    response = await fetch(
+      `${API_URL}/shipments/${encodeURIComponent(
+        identifier
+      )}/label`,
+      {
+        method: "GET",
+        headers,
+      }
+    );
+  } catch (error) {
+    console.error("Shipping label request failed:", error);
+
     throw new Error(
-      "Server did not return a PDF. Check the backend label endpoint."
+      "Unable to connect to the server to download the shipping label."
     );
   }
 
-  const blob = await response.blob();
+  if (!response.ok) {
+    const result = await response.json().catch(() => null);
 
-  if (blob.size === 0) {
-    throw new Error("The PDF file is empty.");
+    throw new Error(
+      result?.message ||
+        `Unable to download shipping label (${response.status}).`
+    );
   }
 
-  const signature = await blob.slice(0, 5).text();
-
-  if (signature !== "%PDF-") {
-    throw new Error("The server returned an invalid PDF file.");
-  }
-
-  return { blob, number };
+  return response.blob();
 };
 
-/* =====================================
-   DOWNLOAD SHIPPING LABEL
-===================================== */
+// ============================================================
+// DOWNLOAD SHIPPING LABEL
+// ============================================================
 
-export const downloadShippingLabel = async (trackingNumber) => {
-  let blobUrl;
+export const downloadShippingLabel = async (identifier) => {
+  const blob = await getShippingLabel(identifier);
 
-  try {
-    const { blob, number } =
-      await fetchShippingLabel(trackingNumber);
+  const objectUrl = URL.createObjectURL(blob);
 
-    blobUrl = window.URL.createObjectURL(blob);
+  const link = document.createElement("a");
 
-    const link = document.createElement("a");
-    link.href = blobUrl;
-    link.download = `SpeedExpress-${number}.pdf`;
+  link.href = objectUrl;
+  link.download = `SpeedExpress-Label-${identifier}.pdf`;
 
-    document.body.appendChild(link);
-    link.click();
-    link.remove();
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
 
-    window.setTimeout(() => {
-      window.URL.revokeObjectURL(blobUrl);
-    }, 5000);
-
-    console.log("Shipping label download started.");
-    return true;
-  } catch (error) {
-    console.error("downloadShippingLabel Error:", error);
-    throw error;
-  }
+  URL.revokeObjectURL(objectUrl);
 };
 
-/* =====================================
-   PRINT SHIPPING LABEL
-===================================== */
+// ============================================================
+// PRINT SHIPPING LABEL
+// ============================================================
 
-export const printShippingLabel = async (trackingNumber) => {
-  let printWindow = null;
-  let blobUrl = null;
-  let cleanupTimer = null;
+export const printShippingLabel = async (identifier) => {
+  const blob = await getShippingLabel(identifier);
 
-  try {
-    printWindow = window.open("about:blank", "_blank");
+  const objectUrl = URL.createObjectURL(blob);
 
-    if (!printWindow) {
-      throw new Error(
-        "Popup blocked. Allow popups for Speed Express and try again."
-      );
-    }
+  const printWindow = window.open(
+    objectUrl,
+    "_blank"
+  );
 
-    printWindow.document.title = "Speed Express Shipping Label";
-    printWindow.document.body.textContent =
-      "Preparing shipping label...";
+  if (!printWindow) {
+    URL.revokeObjectURL(objectUrl);
 
-    const result = await fetchShippingLabel(trackingNumber);
-
-    blobUrl = window.URL.createObjectURL(result.blob);
-    printWindow.location.replace(blobUrl);
-
-    const activeWindow = printWindow;
-    const activeBlobUrl = blobUrl;
-
-    cleanupTimer = window.setInterval(() => {
-      if (activeWindow.closed) {
-        window.clearInterval(cleanupTimer);
-        window.URL.revokeObjectURL(activeBlobUrl);
-        cleanupTimer = null;
-        blobUrl = null;
-      }
-    }, 1000);
-
-    return true;
-  } catch (error) {
-    if (cleanupTimer !== null) {
-      window.clearInterval(cleanupTimer);
-    }
-
-    if (printWindow && !printWindow.closed) {
-      printWindow.close();
-    }
-
-    if (blobUrl) {
-      window.URL.revokeObjectURL(blobUrl);
-    }
-
-    console.error("printShippingLabel Error:", error);
-    throw error;
+    throw new Error(
+      "The print window was blocked. Please allow pop-ups and try again."
+    );
   }
+
+  printWindow.addEventListener("load", () => {
+    printWindow.focus();
+    printWindow.print();
+  });
+
+  setTimeout(() => {
+    URL.revokeObjectURL(objectUrl);
+  }, 60000);
 };
 
-/* =====================================
-   EXPORT API URL
-===================================== */
+// ============================================================
+// EXPORT DEFAULT API OBJECT
+// ============================================================
 
-export { API_URL };
+const api = {
+  API_URL,
+  checkBackendHealth,
+  createShipment,
+  getAllShipments,
+  trackShipment,
+  updateShipment,
+  updateShipmentStatus,
+  deleteShipment,
+  getShippingLabel,
+  downloadShippingLabel,
+  printShippingLabel,
+};
+
+export default api;
+ 
