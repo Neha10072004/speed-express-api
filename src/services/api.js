@@ -1,17 +1,22 @@
 
-// ============================================================
-// SPEED EXPRESS - API SERVICE
-// File: src/services/api.js
-// ============================================================
+/* ============================================================
+   SPEED EXPRESS - API SERVICE
+   File: src/services/api.js
+============================================================ */
+
+/* ============================================================
+   API CONFIGURATION
+============================================================ */
 
 export const API_URL = (
   import.meta.env.VITE_API_URL ||
   "https://api.speedexp.in/api"
 ).replace(/\/+$/, "");
 
-// ============================================================
-// LOGIN SESSION
-// ============================================================
+
+/* ============================================================
+   LOGIN SESSION
+============================================================ */
 
 const getLoginUser = () => {
   try {
@@ -26,14 +31,15 @@ const getLoginUser = () => {
   }
 };
 
-// ============================================================
-// AUTHENTICATION TOKEN
-// ============================================================
+
+/* ============================================================
+   AUTHENTICATION TOKEN
+============================================================ */
 
 const getAuthToken = () => {
   const user = getLoginUser();
 
-  // Token may be stored inside the login user object.
+  // Token stored inside the login user object.
   if (user?.token) {
     return user.token;
   }
@@ -42,7 +48,7 @@ const getAuthToken = () => {
     return user.authToken;
   }
 
-  // Token may also be stored separately.
+  // Token stored separately.
   return (
     localStorage.getItem("speedExpressToken") ||
     sessionStorage.getItem("speedExpressToken") ||
@@ -50,9 +56,10 @@ const getAuthToken = () => {
   );
 };
 
-// ============================================================
-// AUTHENTICATION HEADERS
-// ============================================================
+
+/* ============================================================
+   AUTHENTICATION HEADERS
+============================================================ */
 
 const getAuthHeaders = (required = false) => {
   const token = getAuthToken();
@@ -70,9 +77,10 @@ const getAuthHeaders = (required = false) => {
     : {};
 };
 
-// ============================================================
-// COMMON API REQUEST FUNCTION
-// ============================================================
+
+/* ============================================================
+   COMMON API REQUEST FUNCTION
+============================================================ */
 
 const fetchApi = async (
   url,
@@ -87,6 +95,7 @@ const fetchApi = async (
   };
 
   // Do not manually set Content-Type for FormData.
+  // The browser automatically adds the multipart boundary.
   const isFormData =
     typeof FormData !== "undefined" &&
     options.body instanceof FormData;
@@ -140,20 +149,22 @@ const fetchApi = async (
   return result;
 };
 
-// ============================================================
-// BACKEND HEALTH CHECK
-// GET /api/health
-// ============================================================
+
+/* ============================================================
+   BACKEND HEALTH CHECK
+   GET /api/health
+============================================================ */
 
 export const checkBackendHealth = async () => {
   return fetchApi(`${API_URL}/health`);
 };
 
-// ============================================================
-// CREATE SHIPMENT
-// POST /api/shipments
-// Admin / Staff
-// ============================================================
+
+/* ============================================================
+   CREATE SHIPMENT
+   POST /api/shipments
+   Admin / Staff
+============================================================ */
 
 export const createShipment = async (shipmentData) => {
   let body = shipmentData;
@@ -182,11 +193,12 @@ export const createShipment = async (shipmentData) => {
   );
 };
 
-// ============================================================
-// GET ALL SHIPMENTS
-// GET /api/shipments
-// Admin / Staff
-// ============================================================
+
+/* ============================================================
+   GET ALL SHIPMENTS
+   GET /api/shipments
+   Admin / Staff
+============================================================ */
 
 export const getAllShipments = async () => {
   return fetchApi(
@@ -201,11 +213,12 @@ export const getAllShipments = async () => {
   );
 };
 
-// ============================================================
-// GET ONE SHIPMENT
-// GET /api/shipments/:identifier
-// Public tracking
-// ============================================================
+
+/* ============================================================
+   GET ONE SHIPMENT
+   GET /api/shipments/:identifier
+   Public tracking
+============================================================ */
 
 export const trackShipment = async (identifier) => {
   if (!identifier || !String(identifier).trim()) {
@@ -227,11 +240,12 @@ export const trackShipment = async (identifier) => {
   );
 };
 
-// ============================================================
-// UPDATE SHIPMENT DETAILS
-// PUT /api/shipments/:identifier
-// Admin / Staff
-// ============================================================
+
+/* ============================================================
+   UPDATE SHIPMENT DETAILS
+   PUT /api/shipments/:identifier
+   Admin / Staff
+============================================================ */
 
 export const updateShipment = async (
   identifier,
@@ -267,45 +281,142 @@ export const updateShipment = async (
   );
 };
 
-// ============================================================
-// UPDATE SHIPMENT STATUS
-// PATCH /api/shipments/:trackingNumber/status
-// Admin / Staff
-// ============================================================
+
+/* ============================================================
+   UPDATE SHIPMENT STATUS
+   PATCH /api/shipments/:trackingNumber/status
+
+   Admin / Staff
+
+   Supports both formats:
+
+   1. Object format:
+      updateShipmentStatus(trackingNumber, {
+        status,
+        location,
+        remarks,
+        eventDateTime,
+        proofFile
+      });
+
+   2. Older positional format:
+      updateShipmentStatus(
+        trackingNumber,
+        status,
+        location,
+        remarks,
+        proofFile,
+        eventDateTime
+      );
+============================================================ */
 
 export const updateShipmentStatus = async (
   identifier,
-  status,
+  statusOrData,
   location = "",
   remarks = "",
   proofFile = null,
   eventDateTime = ""
 ) => {
-  if (!identifier) {
+  // Validate tracking number or AWD number.
+  if (!identifier || !String(identifier).trim()) {
     throw new Error("Tracking number is required.");
   }
 
-  if (!status) {
+  let statusData = {};
+
+  // ----------------------------------------------------------
+  // OBJECT FORMAT
+  // Used by the current Status.jsx
+  // ----------------------------------------------------------
+
+  if (
+    statusOrData &&
+    typeof statusOrData === "object" &&
+    !(statusOrData instanceof FormData)
+  ) {
+    statusData = statusOrData;
+  } else {
+    // --------------------------------------------------------
+    // OLD POSITIONAL FORMAT
+    // Maintains compatibility with older components.
+    // --------------------------------------------------------
+
+    statusData = {
+      status: statusOrData,
+      location,
+      remarks,
+      proofFile,
+      eventDateTime,
+    };
+  }
+
+  // Extract values safely.
+  const finalStatus = String(
+    statusData.status || ""
+  ).trim();
+
+  const finalLocation = String(
+    statusData.location ||
+    statusData.currentLocation ||
+    ""
+  ).trim();
+
+  const finalRemarks = String(
+    statusData.remarks || ""
+  ).trim();
+
+  const finalProofFile =
+    statusData.proofFile || null;
+
+  const finalEventDateTime =
+    statusData.eventDateTime || "";
+
+  // ----------------------------------------------------------
+  // VALIDATION
+  // ----------------------------------------------------------
+
+  if (!finalStatus) {
     throw new Error("Shipment status is required.");
   }
 
+  if (!finalLocation) {
+    throw new Error(
+      "Please enter the current shipment location."
+    );
+  }
+
+  // ----------------------------------------------------------
+  // CREATE FORMDATA
+  // ----------------------------------------------------------
+
   const formData = new FormData();
 
-  formData.append("status", status);
-  formData.append("location", location);
-  formData.append("remarks", remarks);
+  formData.append("status", finalStatus);
+  formData.append("location", finalLocation);
+  formData.append("remarks", finalRemarks);
 
-  if (eventDateTime) {
-    formData.append("eventDateTime", eventDateTime);
+  if (finalEventDateTime) {
+    formData.append(
+      "eventDateTime",
+      finalEventDateTime
+    );
   }
 
-  if (proofFile) {
-    formData.append("proofFile", proofFile);
+  if (finalProofFile) {
+    formData.append(
+      "proofFile",
+      finalProofFile
+    );
   }
+
+  // ----------------------------------------------------------
+  // SEND REQUEST TO BACKEND
+  // ----------------------------------------------------------
 
   return fetchApi(
     `${API_URL}/shipments/${encodeURIComponent(
-      identifier
+      String(identifier).trim()
     )}/status`,
     {
       method: "PATCH",
@@ -315,11 +426,12 @@ export const updateShipmentStatus = async (
   );
 };
 
-// ============================================================
-// DELETE SHIPMENT
-// DELETE /api/shipments/:identifier
-// Admin
-// ============================================================
+
+/* ============================================================
+   DELETE SHIPMENT
+   DELETE /api/shipments/:identifier
+   Admin
+============================================================ */
 
 export const deleteShipment = async (identifier) => {
   if (!identifier || !String(identifier).trim()) {
@@ -342,11 +454,12 @@ export const deleteShipment = async (identifier) => {
   );
 };
 
-// ============================================================
-// GET SHIPPING LABEL
-// GET /api/shipments/:identifier/label
-// Admin / Staff
-// ============================================================
+
+/* ============================================================
+   GET SHIPPING LABEL
+   GET /api/shipments/:identifier/label
+   Admin / Staff
+============================================================ */
 
 export const getShippingLabel = async (identifier) => {
   if (!identifier) {
@@ -371,7 +484,10 @@ export const getShippingLabel = async (identifier) => {
       }
     );
   } catch (error) {
-    console.error("Shipping label request failed:", error);
+    console.error(
+      "Shipping label request failed:",
+      error
+    );
 
     throw new Error(
       "Unable to connect to the server to download the shipping label."
@@ -383,36 +499,41 @@ export const getShippingLabel = async (identifier) => {
 
     throw new Error(
       result?.message ||
-        `Unable to download shipping label (${response.status}).`
+      `Unable to download shipping label (${response.status}).`
     );
   }
 
   return response.blob();
 };
 
-// ============================================================
-// DOWNLOAD SHIPPING LABEL
-// ============================================================
+
+/* ============================================================
+   DOWNLOAD SHIPPING LABEL
+============================================================ */
 
 export const downloadShippingLabel = async (identifier) => {
   const blob = await getShippingLabel(identifier);
 
   const objectUrl = URL.createObjectURL(blob);
+
   const link = document.createElement("a");
 
   link.href = objectUrl;
   link.download = `SpeedExpress-Label-${identifier}.pdf`;
 
   document.body.appendChild(link);
+
   link.click();
+
   link.remove();
 
   URL.revokeObjectURL(objectUrl);
 };
 
-// ============================================================
-// PRINT SHIPPING LABEL
-// ============================================================
+
+/* ============================================================
+   PRINT SHIPPING LABEL
+============================================================ */
 
 export const printShippingLabel = async (identifier) => {
   const blob = await getShippingLabel(identifier);
@@ -442,23 +563,33 @@ export const printShippingLabel = async (identifier) => {
   }, 60000);
 };
 
-// ============================================================
-// EXPORT DEFAULT API OBJECT
-// ============================================================
+
+/* ============================================================
+   EXPORT DEFAULT API OBJECT
+============================================================ */
 
 const api = {
   API_URL,
+
   checkBackendHealth,
+
   createShipment,
+
   getAllShipments,
+
   trackShipment,
+
   updateShipment,
+
   updateShipmentStatus,
+
   deleteShipment,
+
   getShippingLabel,
+
   downloadShippingLabel,
+
   printShippingLabel,
 };
 
 export default api;
-
