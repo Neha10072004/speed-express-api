@@ -454,13 +454,13 @@ function Status() {
 
       // The API service must append eventDateTime to FormData.
       // The backend must save this timestamp in shipment history.
-      const response = await updateShipmentStatus(trackingNumber, {
-        status: form.status,
-        location,
-        remarks: form.remarks.trim(),
-        eventDateTime: eventDateTimeISO,
-        ...(proofFile ? { proofFile } : {}),
-      });
+const response = await updateShipmentStatus(trackingNumber, {
+  status: form.status,
+  location,
+  remarks: form.remarks.trim(),
+  eventDateTime: eventDateTimeISO,
+  ...(proofFile ? { proofFile } : {}),
+});
 
       const shipment = response?.shipment || null;
       const formattedDateTime = formatIndiaDateTime(eventDateTime);
