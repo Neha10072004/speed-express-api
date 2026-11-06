@@ -3,37 +3,40 @@ const express = require("express");
 
 const router = express.Router();
 
-// ==================================================
+// ============================================================
 // SPEED EXPRESS - SHIPMENT ROUTES
 // File: backend/routes/shipmentRoutes.js
-// ==================================================
+// ============================================================
 
-// --------------------------------------------------
-// CONTROLLER
-// --------------------------------------------------
+
+// ============================================================
+// IMPORT CONTROLLER
+// ============================================================
 
 const shipmentController = require("../controllers/shipmentController");
 
-// --------------------------------------------------
-// AUTHENTICATION MIDDLEWARE
-// --------------------------------------------------
+
+// ============================================================
+// IMPORT AUTHENTICATION MIDDLEWARE
+// ============================================================
 
 const { protect } = require("../middleware/authMiddleware");
 
-// --------------------------------------------------
-// FILE UPLOAD MIDDLEWARE
-// --------------------------------------------------
+
+// ============================================================
+// IMPORT FILE UPLOAD MIDDLEWARE
+// ============================================================
 
 const uploadProof = require("../middleware/uploadProof");
 
 const handleUploadError = uploadProof.handleUploadError;
 
-// ==================================================
-// 1. CREATE SHIPMENT
-// ==================================================
 
+// ============================================================
+// 1. CREATE SHIPMENT
 // POST /api/shipments
-// Admin only.
+// ADMIN ONLY
+// ============================================================
 
 router.post(
   "/",
@@ -41,12 +44,12 @@ router.post(
   shipmentController.createShipment
 );
 
-// ==================================================
-// 2. GET ALL SHIPMENTS
-// ==================================================
 
+// ============================================================
+// 2. GET ALL SHIPMENTS
 // GET /api/shipments
-// Admin only.
+// ADMIN ONLY
+// ============================================================
 
 router.get(
   "/",
@@ -54,41 +57,36 @@ router.get(
   shipmentController.getAllShipments
 );
 
-// ==================================================
-// 3. VIEW SUPPORTING DOCUMENT
-// ==================================================
 
+// ============================================================
+// 3. VIEW SUPPORTING DOCUMENT
 // GET /api/shipments/:trackingNumber/documents/:documentId/view
-//
-// Public route.
-// Allows customers to view an attachment from tracking.
+// PUBLIC
+// ============================================================
 
 router.get(
   "/:trackingNumber/documents/:documentId/view",
   shipmentController.viewSupportingDocument
 );
 
-// ==================================================
-// 4. DOWNLOAD SUPPORTING DOCUMENT
-// ==================================================
 
+// ============================================================
+// 4. DOWNLOAD SUPPORTING DOCUMENT
 // GET /api/shipments/:trackingNumber/documents/:documentId/download
-//
-// Public route.
-// Allows customers to download an attachment.
+// PUBLIC
+// ============================================================
 
 router.get(
   "/:trackingNumber/documents/:documentId/download",
   shipmentController.downloadSupportingDocument
 );
 
-// ==================================================
-// 5. DOWNLOAD / VIEW SHIPPING LABEL
-// ==================================================
 
+// ============================================================
+// 5. VIEW / DOWNLOAD SHIPPING LABEL
 // GET /api/shipments/:trackingNumber/label
-//
-// Admin only.
+// ADMIN ONLY
+// ============================================================
 
 router.get(
   "/:trackingNumber/label",
@@ -96,24 +94,20 @@ router.get(
   shipmentController.getShippingLabel
 );
 
-// ==================================================
-// 6. UPDATE SHIPMENT STATUS
-// ==================================================
 
+// ============================================================
+// 6. UPDATE SHIPMENT STATUS
 // PATCH /api/shipments/:trackingNumber/status
-//
-// Admin only.
+// ADMIN ONLY
 //
 // Expected FormData:
-//
-// status
-// location
-// remarks
-// eventDateTime
-// visibleToCustomer
-// proofFile
-//
-// proofFile is optional.
+// - status
+// - location
+// - remarks
+// - eventDateTime
+// - visibleToCustomer
+// - proofFile (optional)
+// ============================================================
 
 router.patch(
   "/:trackingNumber/status",
@@ -123,13 +117,15 @@ router.patch(
   shipmentController.updateShipmentStatus
 );
 
-// ==================================================
-// 7. UPDATE SHIPMENT HISTORY
-// ==================================================
 
+// ============================================================
+// 7. EDIT EXISTING SHIPMENT HISTORY ENTRY
 // PATCH /api/shipments/:trackingNumber/history/:historyId
+// ADMIN ONLY
 //
-// Admin only.
+// Updates an existing history entry.
+// Does not create a duplicate history entry.
+// ============================================================
 
 router.patch(
   "/:trackingNumber/history/:historyId",
@@ -137,13 +133,28 @@ router.patch(
   shipmentController.updateShipmentHistoryEntry
 );
 
-// ==================================================
-// 8. DELETE SHIPMENT
-// ==================================================
 
-// DELETE /api/shipments/:trackingNumber
+// ============================================================
+// 8. DELETE ONE SHIPMENT HISTORY ENTRY
+// DELETE /api/shipments/:trackingNumber/history/:historyId
+// ADMIN ONLY
 //
-// Admin only.
+// Deletes only the selected history entry.
+// Does not delete the complete shipment.
+// ============================================================
+
+router.delete(
+  "/:trackingNumber/history/:historyId",
+  protect,
+  shipmentController.deleteShipmentHistoryEntry
+);
+
+
+// ============================================================
+// 9. DELETE COMPLETE SHIPMENT
+// DELETE /api/shipments/:trackingNumber
+// ADMIN ONLY
+// ============================================================
 
 router.delete(
   "/:trackingNumber",
@@ -151,22 +162,23 @@ router.delete(
   shipmentController.deleteShipment
 );
 
-// ==================================================
-// 9. GET SHIPMENT BY TRACKING NUMBER
-// ==================================================
 
+// ============================================================
+// 10. PUBLIC SHIPMENT TRACKING
 // GET /api/shipments/:trackingNumber
+// PUBLIC
 //
-// Public route.
 // Customers can track shipments without logging in.
+// ============================================================
 
 router.get(
   "/:trackingNumber",
   shipmentController.getShipmentByTrackingNumber
 );
 
-// ==================================================
+
+// ============================================================
 // EXPORT ROUTER
-// ==================================================
+// ============================================================
 
 module.exports = router;

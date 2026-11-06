@@ -1558,6 +1558,135 @@ const deleteShipment = async (req, res) => {
   }
 };
 
+
+/* =========================================================
+   DELETE ONE EXISTING STATUS HISTORY ENTRY
+   DELETE /api/shipments/:trackingNumber/history/:historyId
+
+   IMPORTANT:
+   - Deletes only the selected history entry.
+   - Does not delete the shipment.
+   - Recalculates current status and location.
+   - Uses the existing admin authentication middleware.
+========================================================= */
+
+const deleteShipmentHistoryEntry = async (req, res) => {
+  try {
+    const identifier = normalizeIdentifier(
+      req.params.trackingNumber
+    );
+
+    const { historyId } = req.params;
+
+    if (!identifier || !mongoose.isValidObjectId(historyId)) {
+      return res.status(400).json({
+        success: false,
+        message: "Valid tracking/AWD number and history ID are required.",
+      });
+    }
+
+    const shipment = await findShipmentByIdentifier(identifier);
+
+    if (!shipment) {
+      return res.status(404).json({
+        success: false,
+        message: "Shipment not found.",
+      });
+    }
+
+    if (!Array.isArray(shipment.history)) {
+      return res.status(404).json({
+        success: false,
+        message: "No shipment history is available.",
+      });
+    }
+
+    // Find the exact history entry.
+    const entry = shipment.history.id(historyId);
+
+    if (!entry) {
+      return res.status(404).json({
+        success: false,
+        message: "Selected shipment history entry was not found.",
+      });
+    }
+
+    // Remember the ID before removing the entry.
+    const deletedEntryId = String(entry._id);
+
+    // Remove only this history entry.
+    shipment.history.pull({
+      _id: historyId,
+    });
+
+    // Find the latest remaining history event.
+    const remainingHistory = [...shipment.history].sort(
+      (a, b) =>
+        new Date(b.timestamp || 0).getTime() -
+        new Date(a.timestamp || 0).getTime()
+    );
+
+    const latestEntry = remainingHistory[0] || null;
+
+    // Recalculate the current shipment status.
+    if (latestEntry) {
+      shipment.status = latestEntry.status || "Shipment Booked";
+
+      shipment.currentStatus =
+        latestEntry.status || "Shipment Booked";
+
+      shipment.currentLocation =
+        latestEntry.location || "";
+
+      shipment.remarks =
+        latestEntry.remarks || "";
+    } else {
+      // Fallback when no history entries remain.
+      shipment.status = "Shipment Booked";
+      shipment.currentStatus = "Shipment Booked";
+      shipment.currentLocation = "";
+      shipment.remarks = "";
+    }
+
+    // Prevent automatic history creation during this save.
+    shipment.$locals.skipAutomaticHistory = true;
+
+    await shipment.save();
+
+    return res.status(200).json({
+      success: true,
+      message: "Shipment history entry deleted successfully.",
+      deletedHistoryId: deletedEntryId,
+      currentStatus: shipment.currentStatus,
+      currentLocation: shipment.currentLocation,
+      remainingHistoryCount: shipment.history.length,
+      shipment,
+    });
+  } catch (error) {
+    console.error(
+      "Delete shipment history entry error:",
+      error
+    );
+
+    if (
+      error.name === "ValidationError" ||
+      error.name === "CastError"
+    ) {
+      return res.status(400).json({
+        success: false,
+        message: "Invalid shipment history information.",
+        error: error.message,
+      });
+    }
+
+    return res.status(500).json({
+      success: false,
+      message: "Failed to delete shipment history entry.",
+      error: error.message,
+    });
+  }
+};
+
 /* =========================================================
    DOWNLOAD SHIPPING LABEL
    GET /api/shipments/:trackingNumber/label
@@ -1611,11 +1740,13 @@ const getShippingLabel = async (req, res) => {
    EXPORT CONTROLLERS
 ========================================================= */
 
+
 module.exports = {
   createShipment,
   getAllShipments,
   updateShipmentStatus,
   updateShipmentHistoryEntry,
+  deleteShipmentHistoryEntry,
   getShippingLabel,
   updateShipment,
   deleteShipment,

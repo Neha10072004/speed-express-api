@@ -1,9 +1,19 @@
 
 import React, { useRef, useState } from "react";
-import { updateShipmentStatus } from "../services/api";
+
+import {
+  updateShipmentStatus,
+  updateShipmentHistoryEntry,
+  deleteShipmentHistoryEntry,
+  trackShipment,
+} from "../services/api";
+
 import "./Status.css";
 
-// Get the current date and time in India Standard Time.
+// ============================================================
+// INDIA DATE AND TIME HELPERS
+// ============================================================
+
 const getIndiaDateTimeLocal = () => {
   const parts = new Intl.DateTimeFormat("en-CA", {
     timeZone: "Asia/Kolkata",
@@ -22,8 +32,6 @@ const getIndiaDateTimeLocal = () => {
   return `${values.year}-${values.month}-${values.day}T${values.hour}:${values.minute}`;
 };
 
-// Format a datetime-local value as a date/time in India.
-// datetime-local has no timezone, so we explicitly interpret it as IST.
 const formatIndiaDateTime = (value) => {
   if (!value) return null;
 
@@ -48,11 +56,7 @@ const formatIndiaDateTime = (value) => {
   };
 };
 
-const API_BASE_URL = (
-  import.meta.env.VITE_API_URL || "https://api.speedexp.in/api"
-).replace(/\/+$/, "");
-
-// datetime-local values are interpreted as India Standard Time (UTC+05:30).
+// Interpret datetime-local values as India Standard Time.
 function convertISTInputToISOString(value) {
   if (!value) {
     throw new Error("Please select the shipment event date and time.");
@@ -88,7 +92,9 @@ function convertISTInputToISOString(value) {
     throw new Error("Please enter a valid shipment event date and time.");
   }
 
-  const parsed = new Date(`${y}-${m}-${d}T${hh}:${mm}:${ss}+05:30`);
+  const parsed = new Date(
+    `${y}-${m}-${d}T${hh}:${mm}:${ss}+05:30`
+  );
 
   if (Number.isNaN(parsed.getTime())) {
     throw new Error("Invalid shipment event date/time.");
@@ -120,6 +126,10 @@ function toISTDateTimeLocal(value) {
 
   return `${values.year}-${values.month}-${values.day}T${values.hour}:${values.minute}`;
 }
+
+// ============================================================
+// CONSTANTS
+// ============================================================
 
 const MAX_FILE_SIZE = 10 * 1024 * 1024;
 
@@ -207,11 +217,16 @@ const PROGRESS_STEPS = [
   },
 ];
 
+// ============================================================
+// COMMON HELPERS
+// ============================================================
+
 function getErrorMessage(error) {
   return (
+    error?.response?.message ||
     error?.response?.data?.message ||
     error?.message ||
-    "Unable to update shipment status. Please try again."
+    "Unable to update shipment. Please try again."
   );
 }
 
@@ -250,6 +265,20 @@ function getStatusTone(status = "") {
 
   return "transit";
 }
+
+// Supports common backend response shapes.
+function extractShipment(response) {
+  return (
+    response?.shipment ||
+    response?.data?.shipment ||
+    response?.data ||
+    response
+  );
+}
+
+// ============================================================
+// ICONS
+// ============================================================
 
 function PackageIcon() {
   return (
@@ -326,13 +355,16 @@ function CalendarIcon() {
   );
 }
 
+// ============================================================
+// STATUS COMPONENT
+// ============================================================
+
 function Status() {
   const fileInputRef = useRef(null);
 
+  // Main shipment status form.
   const [form, setForm] = useState(INITIAL_FORM);
   const [proofFile, setProofFile] = useState(null);
-
-  // Customer visibility is OFF by default.
   const [visibleToCustomer, setVisibleToCustomer] = useState(false);
 
   const [eventDateTime, setEventDateTime] = useState(
@@ -344,10 +376,12 @@ function Status() {
   const [error, setError] = useState("");
   const [updatedShipment, setUpdatedShipment] = useState(null);
 
+  // History editing state.
   const [historySearch, setHistorySearch] = useState("");
   const [historyShipment, setHistoryShipment] = useState(null);
   const [historyLoading, setHistoryLoading] = useState(false);
   const [historySaving, setHistorySaving] = useState(false);
+  const [historyDeletingId, setHistoryDeletingId] = useState("");
   const [historyError, setHistoryError] = useState("");
   const [historySuccess, setHistorySuccess] = useState("");
   const [selectedHistoryId, setSelectedHistoryId] = useState("");
@@ -362,6 +396,10 @@ function Status() {
   const selectedStatus = STATUS_OPTIONS.find(
     (item) => item.value === form.status
   );
+
+  // ==========================================================
+  // MAIN FORM HANDLERS
+  // ==========================================================
 
   const handleChange = (event) => {
     const { name, value } = event.target;
@@ -437,6 +475,10 @@ function Status() {
     setError("");
   };
 
+  // ==========================================================
+  // SUBMIT NEW SHIPMENT STATUS
+  // ==========================================================
+
   const handleSubmit = async (event) => {
     event.preventDefault();
 
@@ -478,47 +520,37 @@ function Status() {
     try {
       setLoading(true);
 
-      // Send status, event date/time, optional file,
-      // and customer visibility in one API request.
       const response = await updateShipmentStatus(trackingNumber, {
         status: form.status,
         location,
         remarks: form.remarks.trim(),
         eventDateTime: eventDateTimeISO,
         ...(proofFile ? { proofFile } : {}),
-        visibleToCustomer: proofFile
-          ? visibleToCustomer
-          : false,
+        visibleToCustomer: proofFile ? visibleToCustomer : false,
       });
 
-      const shipment = response?.shipment || null;
+      const shipment = extractShipment(response);
       const formattedDateTime = formatIndiaDateTime(eventDateTime);
 
       setUpdatedShipment({
         ...(shipment || {}),
-        trackingNumber:
-          shipment?.trackingNumber || trackingNumber,
+        trackingNumber: shipment?.trackingNumber || trackingNumber,
         awdNumber: shipment?.awdNumber || "",
-        currentStatus:
-          shipment?.currentStatus || form.status,
-        currentLocation:
-          shipment?.currentLocation || location,
-        currentDate:
-          formattedDateTime?.date || "",
-        currentTime:
-          formattedDateTime?.time || "",
+        currentStatus: shipment?.currentStatus || form.status,
+        currentLocation: shipment?.currentLocation || location,
+        currentDate: formattedDateTime?.date || "",
+        currentTime: formattedDateTime?.time || "",
         eventDateTime,
         documentVisibleToCustomer: proofFile
           ? visibleToCustomer
           : false,
+        documentWasUploaded: Boolean(proofFile),
       });
 
       setSuccess(
-        response?.message ||
-          "Shipment status updated successfully."
+        response?.message || "Shipment status updated successfully."
       );
 
-      // Preserve the tracking number for the next update.
       setForm((previous) => ({
         ...previous,
         trackingNumber,
@@ -540,6 +572,10 @@ function Status() {
     }
   };
 
+  // ==========================================================
+  // RESET MAIN FORM
+  // ==========================================================
+
   const handleReset = () => {
     if (loading) return;
 
@@ -556,6 +592,11 @@ function Status() {
     }
   };
 
+  // ==========================================================
+  // LOAD SHIPMENT HISTORY
+  // Public tracking lookup. No admin token is required to read.
+  // ==========================================================
+
   const loadHistoryShipment = async (event) => {
     event.preventDefault();
 
@@ -566,6 +607,13 @@ function Status() {
     setHistoryShipment(null);
     setSelectedHistoryId("");
 
+    setEditHistoryForm({
+      status: "",
+      location: "",
+      remarks: "",
+      eventDateTime: "",
+    });
+
     if (!identifier) {
       setHistoryError("Enter a tracking number or AWD number.");
       return;
@@ -574,38 +622,26 @@ function Status() {
     try {
       setHistoryLoading(true);
 
-      const response = await fetch(
-        `${API_BASE_URL}/shipments/${encodeURIComponent(identifier)}`,
-        {
-          method: "GET",
-          headers: { Accept: "application/json" },
-          credentials: "include",
-        }
-      );
-
-      const data = await response.json().catch(() => ({}));
-
-      if (!response.ok || data.success === false) {
-        throw new Error(
-          data.message || "Shipment not found. Please check the number."
-        );
-      }
-
-      const found = data.shipment || data.data || data;
+      const response = await trackShipment(identifier);
+      const found = extractShipment(response);
 
       if (!found || !Array.isArray(found.history)) {
-        throw new Error("Shipment history was not returned by the server.");
+        throw new Error(
+          "Shipment history was not returned by the server."
+        );
       }
 
       setHistoryShipment(found);
     } catch (loadError) {
-      setHistoryError(
-        loadError.message || "Unable to load shipment history."
-      );
+      setHistoryError(getErrorMessage(loadError));
     } finally {
       setHistoryLoading(false);
     }
   };
+
+  // ==========================================================
+  // SELECT EXISTING HISTORY ENTRY
+  // ==========================================================
 
   const chooseHistoryEntry = (entry) => {
     if (!entry?._id) {
@@ -627,6 +663,10 @@ function Status() {
     });
   };
 
+  // ==========================================================
+  // HISTORY EDIT FORM HANDLER
+  // ==========================================================
+
   const handleHistoryEditChange = (event) => {
     const { name, value } = event.target;
 
@@ -639,22 +679,37 @@ function Status() {
     setHistorySuccess("");
   };
 
+  // ==========================================================
+  // SAVE EXISTING HISTORY ENTRY
+  //
+  // Uses updateShipmentHistoryEntry().
+  // The API helper must send Authorization: Bearer <JWT>.
+  // Updates the selected history ID instead of adding a new event.
+  // ==========================================================
+
   const saveHistoryEntry = async (event) => {
     event.preventDefault();
 
     setHistoryError("");
     setHistorySuccess("");
 
-    if (!historyShipment?.trackingNumber || !selectedHistoryId) {
-      setHistoryError("Load a shipment and select a history entry first.");
+    const trackingNumber =
+      historyShipment?.trackingNumber || historySearch.trim();
+
+    if (!trackingNumber || !selectedHistoryId) {
+      setHistoryError(
+        "Load a shipment and select a history entry first."
+      );
       return;
     }
 
-    if (
-      !editHistoryForm.status ||
-      !editHistoryForm.location.trim()
-    ) {
-      setHistoryError("Status and location are required.");
+    if (!editHistoryForm.status) {
+      setHistoryError("Please select a shipment status.");
+      return;
+    }
+
+    if (!editHistoryForm.location.trim()) {
+      setHistoryError("Please enter the shipment location.");
       return;
     }
 
@@ -672,62 +727,32 @@ function Status() {
     try {
       setHistorySaving(true);
 
-      const response = await fetch(
-        `${API_BASE_URL}/shipments/${encodeURIComponent(
-          historyShipment.trackingNumber
-        )}/history/${encodeURIComponent(selectedHistoryId)}`,
+      await updateShipmentHistoryEntry(
+        trackingNumber,
+        selectedHistoryId,
         {
-          method: "PATCH",
-          headers: {
-            "Content-Type": "application/json",
-            Accept: "application/json",
-          },
-          credentials: "include",
-          body: JSON.stringify({
-            status: editHistoryForm.status,
-            location: editHistoryForm.location.trim(),
-            remarks: editHistoryForm.remarks.trim(),
-            eventDateTime: timestamp,
-          }),
+          status: editHistoryForm.status,
+          location: editHistoryForm.location.trim(),
+          remarks: editHistoryForm.remarks.trim(),
+          eventDateTime: timestamp,
+          timestamp,
         }
       );
 
-      const data = await response.json().catch(() => ({}));
+      // Reload saved data from the server.
+      const refreshedResponse = await trackShipment(trackingNumber);
+      const refreshedShipment = extractShipment(refreshedResponse);
 
-      if (!response.ok || data.success === false) {
+      if (
+        !refreshedShipment ||
+        !Array.isArray(refreshedShipment.history)
+      ) {
         throw new Error(
-          data.message || "Unable to update the selected history entry."
+          "The entry was submitted, but the updated history could not be refreshed."
         );
       }
 
-      setHistorySuccess(
-        data.message || "Existing shipment history entry updated."
-      );
-
-      // Reload from MongoDB so the screen shows persisted values.
-      const refreshed = await fetch(
-        `${API_BASE_URL}/shipments/${encodeURIComponent(
-          historyShipment.trackingNumber
-        )}`,
-        {
-          headers: { Accept: "application/json" },
-          credentials: "include",
-        }
-      );
-
-      const refreshedData = await refreshed.json().catch(() => ({}));
-
-      if (!refreshed.ok || refreshedData.success === false) {
-        throw new Error(
-          refreshedData.message ||
-            "Saved, but unable to refresh shipment history."
-        );
-      }
-
-      setHistoryShipment(
-        refreshedData.shipment || refreshedData
-      );
-
+      setHistoryShipment(refreshedShipment);
       setSelectedHistoryId("");
 
       setEditHistoryForm({
@@ -736,14 +761,117 @@ function Status() {
         remarks: "",
         eventDateTime: "",
       });
-    } catch (saveError) {
-      setHistoryError(
-        saveError.message || "Unable to save history changes."
+
+      setHistorySuccess(
+        "The existing shipment history entry has been updated successfully."
       );
+    } catch (saveError) {
+      setHistoryError(getErrorMessage(saveError));
     } finally {
       setHistorySaving(false);
     }
   };
+
+  // ==========================================================
+  // DELETE ONE SELECTED HISTORY ENTRY
+  // ==========================================================
+
+  const deleteHistoryEntry = async (entry) => {
+    if (!entry?._id) {
+      setHistoryError(
+        "This history entry does not have a valid database ID."
+      );
+      return;
+    }
+
+    const confirmed = window.confirm(
+      `Are you sure you want to delete this history entry?\n\n` +
+        `Status: ${entry.status || "—"}\n` +
+        `Location: ${entry.location || "—"}\n\n` +
+        "Only this history entry will be deleted. The shipment itself will not be deleted."
+    );
+
+    if (!confirmed) return;
+
+    const trackingNumber =
+      historyShipment?.trackingNumber || historySearch.trim();
+
+    if (!trackingNumber) {
+      setHistoryError("Shipment tracking number is missing.");
+      return;
+    }
+
+    try {
+      setHistoryDeletingId(entry._id);
+      setHistoryError("");
+      setHistorySuccess("");
+
+      // Authenticated DELETE request with admin Bearer token.
+      await deleteShipmentHistoryEntry(
+        trackingNumber,
+        entry._id
+      );
+
+      // Reload shipment history after deletion.
+      const refreshedResponse = await trackShipment(trackingNumber);
+      const refreshedShipment = extractShipment(refreshedResponse);
+
+      if (
+        !refreshedShipment ||
+        !Array.isArray(refreshedShipment.history)
+      ) {
+        throw new Error(
+          "History was deleted, but the updated shipment could not be loaded."
+        );
+      }
+
+      setHistoryShipment(refreshedShipment);
+
+      // Clear edit form if the deleted entry was selected.
+      if (selectedHistoryId === entry._id) {
+        setSelectedHistoryId("");
+
+        setEditHistoryForm({
+          status: "",
+          location: "",
+          remarks: "",
+          eventDateTime: "",
+        });
+      }
+
+      setHistorySuccess(
+        "The selected shipment history entry has been deleted successfully."
+      );
+    } catch (deleteError) {
+      setHistoryError(getErrorMessage(deleteError));
+    } finally {
+      setHistoryDeletingId("");
+    }
+  };
+
+  // ==========================================================
+  // CANCEL HISTORY EDIT
+  // ==========================================================
+
+  const cancelHistoryEdit = () => {
+    if (historySaving) return;
+
+    setSelectedHistoryId("");
+
+    setEditHistoryForm({
+      status: "",
+      location: "",
+      remarks: "",
+      eventDateTime: "",
+    });
+
+    setHistoryError("");
+    setHistorySuccess("");
+  };
+
+  // ==========================================================
+  // RENDER
+  // ==========================================================
 
   return (
     <main className="status-page">
@@ -770,6 +898,7 @@ function Status() {
 
       <div className="status-layout">
         {/* LEFT: UPDATE FORM */}
+
         <section className="status-form-card">
           <div className="status-form-heading">
             <div className="status-heading-icon">
@@ -790,6 +919,7 @@ function Status() {
               role="alert"
             >
               <span className="status-message-symbol">!</span>
+
               <div>
                 <strong>Update unsuccessful</strong>
                 <p>{error}</p>
@@ -806,6 +936,7 @@ function Status() {
               <span className="status-message-symbol">
                 <CheckIcon />
               </span>
+
               <div>
                 <strong>Shipment updated successfully</strong>
                 <p>{success}</p>
@@ -817,12 +948,11 @@ function Status() {
                   </p>
                 )}
 
-                {updatedShipment?.documentVisibleToCustomer === false &&
-                  updatedShipment &&
-                  proofFile === null && (
+                {updatedShipment?.documentWasUploaded &&
+                  !updatedShipment?.documentVisibleToCustomer && (
                     <p>
-                      Customer visibility was not enabled for this
-                      upload, or no document was attached.
+                      The uploaded document is private and available
+                      to administrators only.
                     </p>
                   )}
               </div>
@@ -831,6 +961,7 @@ function Status() {
 
           <form onSubmit={handleSubmit} noValidate>
             {/* TRACKING NUMBER */}
+
             <div className="status-field">
               <label htmlFor="statusTrackingNumber">
                 Tracking / AWD Number
@@ -862,6 +993,7 @@ function Status() {
             </div>
 
             {/* SHIPMENT STATUS */}
+
             <div className="status-field">
               <label htmlFor="statusSelect">
                 Shipment Status
@@ -890,12 +1022,14 @@ function Status() {
                       form.status
                     )}`}
                   />
+
                   <span>{selectedStatus.description}</span>
                 </div>
               )}
             </div>
 
             {/* LOCATION */}
+
             <div className="status-field">
               <label htmlFor="statusLocation">
                 Current Shipment Location
@@ -914,7 +1048,8 @@ function Status() {
               />
             </div>
 
-            {/* EDITABLE DATE AND TIME */}
+            {/* EVENT DATE AND TIME */}
+
             <div className="status-field">
               <label htmlFor="eventDateTime">
                 Shipment Event Date &amp; Time
@@ -944,6 +1079,7 @@ function Status() {
             </div>
 
             {/* REMARKS */}
+
             <div className="status-field">
               <label htmlFor="statusRemarks">
                 Remarks
@@ -966,7 +1102,8 @@ function Status() {
               </small>
             </div>
 
-            {/* OPTIONAL SUPPORTING DOCUMENT */}
+            {/* SUPPORTING DOCUMENT */}
+
             <div className="status-field">
               <label htmlFor="statusProofFile">
                 Supporting Documents
@@ -1047,7 +1184,8 @@ function Status() {
                     </button>
                   </div>
 
-                  {/* CUSTOMER VISIBILITY CHECKBOX */}
+                  {/* CUSTOMER VISIBILITY */}
+
                   <div className="status-document-visibility">
                     <label
                       className="status-visibility-label"
@@ -1067,6 +1205,7 @@ function Status() {
 
                       <span className="status-visibility-copy">
                         <strong>Visible to Customer</strong>
+
                         <small>
                           Allow the customer to view and download
                           this document from the shipment tracking page.
@@ -1076,9 +1215,7 @@ function Status() {
 
                     <div
                       className={`status-visibility-status ${
-                        visibleToCustomer
-                          ? "is-visible"
-                          : "is-private"
+                        visibleToCustomer ? "is-visible" : "is-private"
                       }`}
                     >
                       <span className="status-visibility-status-dot" />
@@ -1093,6 +1230,7 @@ function Status() {
             </div>
 
             {/* FORM ACTIONS */}
+
             <div className="status-form-footer">
               <p>
                 <span className="status-required">*</span>
@@ -1132,6 +1270,7 @@ function Status() {
         </section>
 
         {/* RIGHT: SHIPMENT PROGRESS */}
+
         <aside className="status-sidebar">
           <section className="status-progress-card">
             <div className="status-sidebar-heading">
@@ -1189,6 +1328,7 @@ function Status() {
           </section>
 
           {/* LAST SUCCESSFUL UPDATE */}
+
           {updatedShipment && (
             <section className="status-latest-card">
               <div className="status-latest-heading">
@@ -1231,6 +1371,7 @@ function Status() {
 
               <div className="status-latest-row">
                 <span>Location</span>
+
                 <strong>
                   {updatedShipment.currentLocation || "—"}
                 </strong>
@@ -1267,7 +1408,10 @@ function Status() {
         </aside>
       </div>
 
-      {/* EDIT AN EXISTING HISTORY ENTRY — does not create a new event */}
+      {/* =====================================================
+          EDIT AN EXISTING HISTORY ENTRY
+      ===================================================== */}
+
       <section className="status-history-panel">
         <div className="status-form-heading">
           <div className="status-heading-icon">
@@ -1276,12 +1420,15 @@ function Status() {
 
           <div>
             <h2>Edit Already Updated Status</h2>
+
             <p>
               Find a shipment, select one saved history entry, and edit it
               without adding a duplicate event.
             </p>
           </div>
         </div>
+
+        {/* HISTORY ERROR */}
 
         {historyError && (
           <div
@@ -1297,21 +1444,26 @@ function Status() {
           </div>
         )}
 
+        {/* HISTORY SUCCESS */}
+
         {historySuccess && (
           <div
             className="status-message status-message-success"
             role="status"
+            aria-live="polite"
           >
             <span className="status-message-symbol">
               <CheckIcon />
             </span>
 
             <div>
-              <strong>History entry updated</strong>
+              <strong>History operation successful</strong>
               <p>{historySuccess}</p>
             </div>
           </div>
         )}
+
+        {/* SEARCH SHIPMENT */}
 
         <form
           className="status-history-search"
@@ -1323,28 +1475,47 @@ function Status() {
             onChange={(event) => setHistorySearch(event.target.value)}
             placeholder="Enter tracking number or AWD number"
             aria-label="Search shipment for history editing"
+            disabled={
+              historyLoading ||
+              historySaving ||
+              Boolean(historyDeletingId)
+            }
           />
 
-          <button type="submit" disabled={historyLoading}>
+          <button
+            type="submit"
+            disabled={
+              historyLoading ||
+              historySaving ||
+              Boolean(historyDeletingId)
+            }
+          >
             {historyLoading ? "Searching..." : "Find Shipment"}
           </button>
         </form>
+
+        {/* SHIPMENT INFORMATION AND HISTORY TABLE */}
 
         {historyShipment && (
           <>
             <div className="status-history-shipment">
               <div>
                 <span>TRACKING NUMBER</span>
-                <strong>{historyShipment.trackingNumber}</strong>
+
+                <strong>
+                  {historyShipment.trackingNumber || "—"}
+                </strong>
               </div>
 
               <div>
                 <span>AWD NUMBER</span>
+
                 <strong>{historyShipment.awdNumber || "—"}</strong>
               </div>
 
               <div>
                 <span>CURRENT STATUS</span>
+
                 <strong>
                   {historyShipment.currentStatus ||
                     historyShipment.status ||
@@ -1374,7 +1545,10 @@ function Status() {
                     )
                     .map((entry, index) => (
                       <tr
-                        key={entry._id || `${entry.timestamp}-${index}`}
+                        key={
+                          entry._id ||
+                          `${entry.timestamp}-${index}`
+                        }
                         className={
                           selectedHistoryId === entry._id
                             ? "is-selected"
@@ -1382,6 +1556,7 @@ function Status() {
                         }
                       >
                         <td>{entry.status || "—"}</td>
+
                         <td>{entry.location || "—"}</td>
 
                         <td>
@@ -1401,14 +1576,35 @@ function Status() {
                         <td>{entry.remarks || "—"}</td>
 
                         <td>
-                          <button
-                            type="button"
-                            className="status-history-edit-button"
-                            onClick={() => chooseHistoryEntry(entry)}
-                            disabled={!entry._id || historySaving}
-                          >
-                            Edit
-                          </button>
+                          <div className="status-history-actions">
+                            <button
+                              type="button"
+                              className="status-history-edit-button"
+                              onClick={() => chooseHistoryEntry(entry)}
+                              disabled={
+                                !entry._id ||
+                                historySaving ||
+                                Boolean(historyDeletingId)
+                              }
+                            >
+                              Edit
+                            </button>
+
+                            <button
+                              type="button"
+                              className="status-history-delete-button"
+                              onClick={() => deleteHistoryEntry(entry)}
+                              disabled={
+                                !entry._id ||
+                                historySaving ||
+                                Boolean(historyDeletingId)
+                              }
+                            >
+                              {historyDeletingId === entry._id
+                                ? "Deleting..."
+                                : "Delete"}
+                            </button>
+                          </div>
                         </td>
                       </tr>
                     ))}
@@ -1423,6 +1619,8 @@ function Status() {
             )}
           </>
         )}
+
+        {/* EDIT SELECTED HISTORY ENTRY */}
 
         {selectedHistoryId && (
           <form
@@ -1443,6 +1641,7 @@ function Status() {
                   value={editHistoryForm.status}
                   onChange={handleHistoryEditChange}
                   required
+                  disabled={historySaving}
                 >
                   {STATUS_OPTIONS.map((item) => (
                     <option key={item.value} value={item.value}>
@@ -1463,6 +1662,7 @@ function Status() {
                   value={editHistoryForm.location}
                   onChange={handleHistoryEditChange}
                   required
+                  disabled={historySaving}
                 />
               </div>
 
@@ -1478,6 +1678,7 @@ function Status() {
                   value={editHistoryForm.eventDateTime}
                   onChange={handleHistoryEditChange}
                   required
+                  disabled={historySaving}
                 />
               </div>
 
@@ -1492,6 +1693,7 @@ function Status() {
                   value={editHistoryForm.remarks}
                   onChange={handleHistoryEditChange}
                   rows={3}
+                  disabled={historySaving}
                 />
               </div>
             </div>
@@ -1500,7 +1702,7 @@ function Status() {
               <button
                 type="button"
                 className="status-reset-button"
-                onClick={() => setSelectedHistoryId("")}
+                onClick={cancelHistoryEdit}
                 disabled={historySaving}
               >
                 Cancel
@@ -1511,9 +1713,7 @@ function Status() {
                 className="status-submit-button"
                 disabled={historySaving}
               >
-                {historySaving
-                  ? "Saving..."
-                  : "Save Edited Entry"}
+                {historySaving ? "Saving..." : "Save Edited Entry"}
               </button>
             </div>
           </form>

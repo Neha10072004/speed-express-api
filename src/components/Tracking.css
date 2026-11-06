@@ -1496,3 +1496,147 @@
     transition-duration: 0.01ms !important;
   }
 }
+
+/* ==================================================
+   SPEED EXPRESS - TRACKING SCAN DOCUMENT
+   Attachment View / Download Actions
+================================================== */
+
+.se-tracking-event-document {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  width: 100%;
+  margin-top: 12px;
+  padding: 12px 14px;
+  background: #f5f9ff;
+  border: 1px solid #dce8f5;
+  border-radius: 10px;
+  box-sizing: border-box;
+}
+
+.se-tracking-event-document-info {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+  flex: 1 1 180px;
+}
+
+.se-tracking-event-document-icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 38px;
+  height: 38px;
+  flex-shrink: 0;
+  color: #1769aa;
+  background: #e3f1ff;
+  border-radius: 9px;
+}
+
+.se-tracking-event-document-icon svg {
+  width: 21px;
+  height: 21px;
+}
+
+.se-tracking-event-document-name {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+}
+
+.se-tracking-event-document-name strong {
+  color: #092b5b;
+  font-size: 13px;
+  font-weight: 700;
+  overflow-wrap: anywhere;
+}
+
+.se-tracking-event-document-name small {
+  color: #718096;
+  font-size: 11px;
+}
+
+.se-tracking-event-document-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+
+.se-tracking-document-view,
+.se-tracking-document-download {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  min-height: 36px;
+  padding: 8px 12px;
+  border-radius: 7px;
+  text-decoration: none;
+  font-size: 12px;
+  font-weight: 700;
+  transition: all 0.2s ease;
+  box-sizing: border-box;
+}
+
+.se-tracking-document-view svg,
+.se-tracking-document-download svg {
+  width: 16px;
+  height: 16px;
+  flex-shrink: 0;
+}
+
+.se-tracking-document-view {
+  color: #1769aa;
+  background: #ffffff;
+  border: 1px solid #1769aa;
+}
+
+.se-tracking-document-view:hover {
+  color: #ffffff;
+  background: #1769aa;
+}
+
+.se-tracking-document-download {
+  color: #ffffff;
+  background: #0b3d91;
+  border: 1px solid #0b3d91;
+}
+
+.se-tracking-document-download:hover {
+  background: #092b5b;
+  border-color: #092b5b;
+}
+
+.se-tracking-document-view:focus-visible,
+.se-tracking-document-download:focus-visible {
+  outline: 3px solid rgba(0, 167, 223, 0.35);
+  outline-offset: 3px;
+}
+
+/* Mobile layout */
+
+@media (max-width: 600px) {
+  .se-tracking-event-document {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .se-tracking-event-document-actions {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    width: 100%;
+  }
+
+  .se-tracking-document-view,
+  .se-tracking-document-download {
+    width: 100%;
+    padding: 9px 7px;
+    font-size: 11px;
+  }
+}

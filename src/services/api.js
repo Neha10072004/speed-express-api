@@ -40,7 +40,6 @@ const getAuthToken = () => {
   const user = getLoginUser();
 
   if (user?.token) return user.token;
-
   if (user?.authToken) return user.authToken;
 
   return (
@@ -142,7 +141,6 @@ const fetchApi = async (
 
 /* ============================================================
    FILE REQUEST HELPER
-   Used for supporting document view and download.
 ============================================================ */
 
 const fetchSupportingDocument = async (
@@ -167,7 +165,10 @@ const fetchSupportingDocument = async (
       },
     });
   } catch (error) {
-    console.error("Supporting document request failed:", error);
+    console.error(
+      "Supporting document request failed:",
+      error
+    );
 
     throw new Error(
       "Unable to connect to the server to retrieve the document."
@@ -178,7 +179,8 @@ const fetchSupportingDocument = async (
     const contentType =
       response.headers.get("content-type") || "";
 
-    let message = `Unable to retrieve document (${response.status}).`;
+    let message =
+      `Unable to retrieve document (${response.status}).`;
 
     if (contentType.includes("application/json")) {
       const result = await response.json().catch(() => null);
@@ -325,6 +327,78 @@ export const updateShipment = async (
 
 
 /* ============================================================
+   UPDATE EXISTING SHIPMENT HISTORY ENTRY
+   PATCH /api/shipments/:trackingNumber/history/:historyId
+
+   IMPORTANT:
+   - Uses admin authentication.
+   - Updates an existing history entry.
+   - Does not create a duplicate status event.
+============================================================ */
+
+export const updateShipmentHistoryEntry = async (
+  trackingNumber,
+  historyId,
+  updateData
+) => {
+  if (!trackingNumber || !String(trackingNumber).trim()) {
+    throw new Error("Tracking number is required.");
+  }
+
+  if (!historyId || !String(historyId).trim()) {
+    throw new Error("History entry ID is required.");
+  }
+
+  if (
+    !updateData ||
+    typeof updateData !== "object" ||
+    Array.isArray(updateData)
+  ) {
+    throw new Error("Valid history update data is required.");
+  }
+
+  const payload = {};
+
+  if (updateData.status !== undefined) {
+    payload.status = String(updateData.status).trim();
+  }
+
+  if (updateData.location !== undefined) {
+    payload.location = String(updateData.location).trim();
+  }
+
+  if (updateData.remarks !== undefined) {
+    payload.remarks = String(updateData.remarks).trim();
+  }
+
+  if (updateData.timestamp !== undefined) {
+    payload.timestamp = updateData.timestamp;
+  }
+
+  if (updateData.eventDateTime !== undefined) {
+    payload.eventDateTime = updateData.eventDateTime;
+  }
+
+  return fetchApi(
+    `${API_URL}/shipments/${encodeURIComponent(
+      String(trackingNumber).trim()
+    )}/history/${encodeURIComponent(
+      String(historyId).trim()
+    )}`,
+    {
+      method: "PATCH",
+      headers: {
+        Accept: "application/json",
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify(payload),
+    },
+    true
+  );
+};
+
+
+/* ============================================================
    UPDATE SHIPMENT STATUS
    PATCH /api/shipments/:trackingNumber/status
 ============================================================ */
@@ -343,7 +417,6 @@ export const updateShipmentStatus = async (
 
   let statusData = {};
 
-  // Object format
   if (
     statusOrData &&
     typeof statusOrData === "object" &&
@@ -351,7 +424,6 @@ export const updateShipmentStatus = async (
   ) {
     statusData = statusOrData;
   } else {
-    // Older positional format
     statusData = {
       status: statusOrData,
       location,
@@ -396,7 +468,11 @@ export const updateShipmentStatus = async (
     );
   }
 
-  if (finalProofFile && !(finalProofFile instanceof File)) {
+  if (
+    finalProofFile &&
+    typeof File !== "undefined" &&
+    !(finalProofFile instanceof File)
+  ) {
     throw new Error("Please select a valid document file.");
   }
 
@@ -455,6 +531,44 @@ export const getSupportingDocumentViewUrl = (
 
 
 /* ============================================================
+   DELETE ONE SHIPMENT HISTORY ENTRY
+   DELETE /api/shipments/:trackingNumber/history/:historyId
+
+   IMPORTANT:
+   - Requires admin authentication.
+   - Deletes only one selected history entry.
+   - Does not delete the entire shipment.
+============================================================ */
+
+export const deleteShipmentHistoryEntry = async (
+  trackingNumber,
+  historyId
+) => {
+  if (!trackingNumber || !String(trackingNumber).trim()) {
+    throw new Error("Tracking number is required.");
+  }
+
+  if (!historyId || !String(historyId).trim()) {
+    throw new Error("History entry ID is required.");
+  }
+
+  return fetchApi(
+    `${API_URL}/shipments/${encodeURIComponent(
+      String(trackingNumber).trim()
+    )}/history/${encodeURIComponent(
+      String(historyId).trim()
+    )}`,
+    {
+      method: "DELETE",
+      headers: {
+        Accept: "application/json",
+      },
+    },
+    true
+  );
+};
+
+/* ============================================================
    SUPPORTING DOCUMENT DOWNLOAD URL
 ============================================================ */
 
@@ -511,7 +625,6 @@ export const viewSupportingDocument = async (
     );
   }
 
-  // Revoke the temporary URL after the document has had time to load.
   window.setTimeout(() => {
     URL.revokeObjectURL(objectUrl);
   }, 60000);
@@ -580,7 +693,7 @@ export const deleteShipment = async (identifier) => {
     true
   );
 };
-  
+
 
 /* ============================================================
    GET SHIPPING LABEL
@@ -608,7 +721,10 @@ export const getShippingLabel = async (identifier) => {
       }
     );
   } catch (error) {
-    console.error("Shipping label request failed:", error);
+    console.error(
+      "Shipping label request failed:",
+      error
+    );
 
     throw new Error(
       "Unable to connect to the server to download the shipping label."
@@ -689,6 +805,7 @@ export const printShippingLabel = async (identifier) => {
    EXPORT DEFAULT API OBJECT
 ============================================================ */
 
+
 const api = {
   API_URL,
 
@@ -700,6 +817,9 @@ const api = {
 
   updateShipment,
   updateShipmentStatus,
+
+  updateShipmentHistoryEntry,
+  deleteShipmentHistoryEntry,
 
   getSupportingDocumentViewUrl,
   getSupportingDocumentDownloadUrl,
