@@ -1,27 +1,39 @@
 
 const express = require("express");
+
 const router = express.Router();
 
+// ==================================================
+// SPEED EXPRESS - SHIPMENT ROUTES
+// File: backend/routes/shipmentRoutes.js
+// ==================================================
+
+// --------------------------------------------------
+// CONTROLLER
+// --------------------------------------------------
+
 const shipmentController = require("../controllers/shipmentController");
-const uploadProof = require("../middleware/uploadProof");
+
+// --------------------------------------------------
+// AUTHENTICATION MIDDLEWARE
+// --------------------------------------------------
+
 const { protect } = require("../middleware/authMiddleware");
 
-/* =========================================================
-   SPEED EXPRESS - SHIPMENT ROUTES
+// --------------------------------------------------
+// FILE UPLOAD MIDDLEWARE
+// --------------------------------------------------
 
-   Admin and authenticated staff users can manage shipments.
+const uploadProof = require("../middleware/uploadProof");
 
-   Public customers can:
-   - Track shipments.
-   - View customer-approved supporting documents.
-   - Download customer-approved supporting documents.
-========================================================= */
+const handleUploadError = uploadProof.handleUploadError;
 
-/* ---------------------------------------------------------
-   1. CREATE NEW BOOKING
-   POST /api/shipments
-   Admin + Staff
---------------------------------------------------------- */
+// ==================================================
+// 1. CREATE SHIPMENT
+// ==================================================
+
+// POST /api/shipments
+// Admin only.
 
 router.post(
   "/",
@@ -29,11 +41,12 @@ router.post(
   shipmentController.createShipment
 );
 
-/* ---------------------------------------------------------
-   2. GET ALL BOOKINGS / ORDERS
-   GET /api/shipments
-   Admin + Staff
---------------------------------------------------------- */
+// ==================================================
+// 2. GET ALL SHIPMENTS
+// ==================================================
+
+// GET /api/shipments
+// Admin only.
 
 router.get(
   "/",
@@ -41,41 +54,41 @@ router.get(
   shipmentController.getAllShipments
 );
 
-/* ---------------------------------------------------------
-   3. UPDATE SHIPMENT STATUS
-   PATCH /api/shipments/:trackingNumber/status
-   Admin + Staff
+// ==================================================
+// 3. VIEW SUPPORTING DOCUMENT
+// ==================================================
 
-   Supports:
-   - Existing proof of delivery upload (proofFile).
-   - Supporting document upload.
-   - Customer visibility checkbox (visibleToCustomer).
---------------------------------------------------------- */
+// GET /api/shipments/:trackingNumber/documents/:documentId/view
+//
+// Public route.
+// Allows customers to view an attachment from tracking.
 
-router.patch(
-  "/:trackingNumber/status",
-  protect,
-  uploadProof.single("proofFile"),
-  shipmentController.updateShipmentStatus
+router.get(
+  "/:trackingNumber/documents/:documentId/view",
+  shipmentController.viewSupportingDocument
 );
 
-/* ---------------------------------------------------------
-   4. EDIT EXISTING STATUS-HISTORY ENTRY
-   PATCH /api/shipments/:trackingNumber/history/:historyId
-   Admin + Staff
---------------------------------------------------------- */
+// ==================================================
+// 4. DOWNLOAD SUPPORTING DOCUMENT
+// ==================================================
 
-router.patch(
-  "/:trackingNumber/history/:historyId",
-  protect,
-  shipmentController.updateShipmentHistoryEntry
+// GET /api/shipments/:trackingNumber/documents/:documentId/download
+//
+// Public route.
+// Allows customers to download an attachment.
+
+router.get(
+  "/:trackingNumber/documents/:documentId/download",
+  shipmentController.downloadSupportingDocument
 );
 
-/* ---------------------------------------------------------
-   5. DOWNLOAD SHIPPING LABEL
-   GET /api/shipments/:trackingNumber/label
-   Admin + Staff
---------------------------------------------------------- */
+// ==================================================
+// 5. DOWNLOAD / VIEW SHIPPING LABEL
+// ==================================================
+
+// GET /api/shipments/:trackingNumber/label
+//
+// Admin only.
 
 router.get(
   "/:trackingNumber/label",
@@ -83,23 +96,54 @@ router.get(
   shipmentController.getShippingLabel
 );
 
-/* ---------------------------------------------------------
-   6. EDIT EXISTING BOOKING
-   PATCH /api/shipments/:trackingNumber
-   Admin + Staff
---------------------------------------------------------- */
+// ==================================================
+// 6. UPDATE SHIPMENT STATUS
+// ==================================================
+
+// PATCH /api/shipments/:trackingNumber/status
+//
+// Admin only.
+//
+// Expected FormData:
+//
+// status
+// location
+// remarks
+// eventDateTime
+// visibleToCustomer
+// proofFile
+//
+// proofFile is optional.
 
 router.patch(
-  "/:trackingNumber",
+  "/:trackingNumber/status",
   protect,
-  shipmentController.updateShipment
+  uploadProof.single("proofFile"),
+  handleUploadError,
+  shipmentController.updateShipmentStatus
 );
 
-/* ---------------------------------------------------------
-   7. DELETE BOOKING
-   DELETE /api/shipments/:trackingNumber
-   Admin + Staff
---------------------------------------------------------- */
+// ==================================================
+// 7. UPDATE SHIPMENT HISTORY
+// ==================================================
+
+// PATCH /api/shipments/:trackingNumber/history/:historyId
+//
+// Admin only.
+
+router.patch(
+  "/:trackingNumber/history/:historyId",
+  protect,
+  shipmentController.updateShipmentHistoryEntry
+);
+
+// ==================================================
+// 8. DELETE SHIPMENT
+// ==================================================
+
+// DELETE /api/shipments/:trackingNumber
+//
+// Admin only.
 
 router.delete(
   "/:trackingNumber",
@@ -107,46 +151,22 @@ router.delete(
   shipmentController.deleteShipment
 );
 
-/* ---------------------------------------------------------
-   8. VIEW CUSTOMER-APPROVED SUPPORTING DOCUMENT
-   GET /api/shipments/:trackingNumber/documents/:documentId/view
+// ==================================================
+// 9. GET SHIPMENT BY TRACKING NUMBER
+// ==================================================
 
-   Public customer access:
-   - Only documents with visibleToCustomer = true.
---------------------------------------------------------- */
-
-router.get(
-  "/:trackingNumber/documents/:documentId/view",
-  shipmentController.viewSupportingDocument
-);
-
-/* ---------------------------------------------------------
-   9. DOWNLOAD CUSTOMER-APPROVED SUPPORTING DOCUMENT
-   GET /api/shipments/:trackingNumber/documents/:documentId/download
-
-   Public customer access:
-   - Only documents with visibleToCustomer = true.
---------------------------------------------------------- */
-
-router.get(
-  "/:trackingNumber/documents/:documentId/download",
-  shipmentController.downloadSupportingDocument
-);
-
-/* ---------------------------------------------------------
-   10. PUBLIC SHIPMENT TRACKING
-   GET /api/shipments/:trackingNumber
-
-   Customers can track shipments without logging in.
---------------------------------------------------------- */
+// GET /api/shipments/:trackingNumber
+//
+// Public route.
+// Customers can track shipments without logging in.
 
 router.get(
   "/:trackingNumber",
   shipmentController.getShipmentByTrackingNumber
 );
 
-/* =========================================================
-   EXPORT ROUTER
-========================================================= */
+// ==================================================
+// EXPORT ROUTER
+// ==================================================
 
 module.exports = router;

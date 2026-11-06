@@ -18,28 +18,6 @@ const ALLOWED_STATUSES = [
 ];
 
 // --------------------------------------------------
-// NORMALIZE LEGACY STATUS VALUES
-// --------------------------------------------------
-
-const normalizeStatus = (value) => {
-  if (!value) return "Shipment Booked";
-
-  const status = String(value).trim();
-
-  const legacyStatuses = {
-    Delivered: "Delivered Successfully",
-    "In Transit": "In Transit to Next Hub",
-    Booked: "Shipment Booked",
-  };
-
-  const normalized = legacyStatuses[status] || status;
-
-  return ALLOWED_STATUSES.includes(normalized)
-    ? normalized
-    : "Shipment Booked";
-};
-
-// --------------------------------------------------
 // SHIPMENT HISTORY SCHEMA
 // --------------------------------------------------
 
@@ -67,9 +45,19 @@ const shipmentHistorySchema = new mongoose.Schema(
       type: Date,
       default: Date.now,
     },
+
+    // IMPORTANT:
+    // Connects the uploaded document to this exact history scan.
+    // Without this field, Mongoose may remove supportingDocumentId
+    // when saving the history subdocument.
+    supportingDocumentId: {
+      type: mongoose.Schema.Types.ObjectId,
+      default: null,
+    },
   },
   {
-    _id: true,
+    timestamps: false,
+    strict: true,
   }
 );
 
@@ -80,19 +68,19 @@ const shipmentHistorySchema = new mongoose.Schema(
 const supportingDocumentSchema = new mongoose.Schema(
   {
     fileId: {
-      type: String,
-      required: true,
-    },
-
-    filename: {
-      type: String,
-      required: true,
-      trim: true,
+      type: mongoose.Schema.Types.ObjectId,
+      default: null,
     },
 
     originalName: {
       type: String,
-      required: true,
+      default: "",
+      trim: true,
+    },
+
+    filename: {
+      type: String,
+      default: "",
       trim: true,
     },
 
@@ -104,7 +92,6 @@ const supportingDocumentSchema = new mongoose.Schema(
     size: {
       type: Number,
       default: 0,
-      min: 0,
     },
 
     uploadedAt: {
@@ -112,9 +99,13 @@ const supportingDocumentSchema = new mongoose.Schema(
       default: Date.now,
     },
 
-    // Unchecked by default.
-    // Admin must explicitly enable customer visibility.
+    uploadedBy: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "User",
+      default: null,
+    },
 
+    // Only documents marked true are returned by public tracking.
     visibleToCustomer: {
       type: Boolean,
       default: false,
@@ -126,133 +117,197 @@ const supportingDocumentSchema = new mongoose.Schema(
 );
 
 // --------------------------------------------------
-// MAIN SHIPMENT SCHEMA
+// SHIPMENT SCHEMA
 // --------------------------------------------------
 
 const shipmentSchema = new mongoose.Schema(
   {
+    // ----------------------------------------------
     // BOOKING INFORMATION
+    // ----------------------------------------------
+
+    trackingNumber: {
+      type: String,
+      required: true,
+      unique: true,
+      trim: true,
+      uppercase: true,
+      index: true,
+    },
+
+    awdNumber: {
+      type: String,
+      default: "",
+      trim: true,
+      uppercase: true,
+    },
 
     bookingType: {
       type: String,
       enum: ["Online", "Offline"],
       default: "Offline",
-      required: true,
     },
-
-    trackingNumber: {
-      type: String,
-      required: [true, "Tracking number is required."],
-      unique: true,
-      trim: true,
-      uppercase: true,
-    },
-
-    // OPTIONAL BOOKING DATE
-    // Format: YYYY-MM-DD
 
     bookingDate: {
-      type: String,
-      default: null,
-      trim: true,
+      type: Date,
+      default: Date.now,
     },
-
-    // OPTIONAL BOOKING TIME
-    // Format: HH:mm (24-hour format)
 
     bookingTime: {
       type: String,
-      default: null,
+      default: "",
       trim: true,
     },
 
-    // AWD IS OPTIONAL
-
-    awdNumber: {
-      type: String,
-      default: undefined,
-      trim: true,
-      uppercase: true,
-
-      set: (value) => {
-        if (value === undefined || value === null) {
-          return undefined;
-        }
-
-        const cleaned = String(value).trim().toUpperCase();
-
-        return cleaned || undefined;
-      },
-    },
-
-    // SENDER DETAILS
+    // ----------------------------------------------
+    // SENDER INFORMATION
+    // ----------------------------------------------
 
     senderName: {
       type: String,
-      required: true,
+      default: "",
+      trim: true,
+    },
+
+    senderCompany: {
+      type: String,
+      default: "",
       trim: true,
     },
 
     senderPhone: {
       type: String,
-      required: true,
+      default: "",
       trim: true,
+    },
+
+    senderEmail: {
+      type: String,
+      default: "",
+      trim: true,
+      lowercase: true,
     },
 
     senderAddress: {
       type: String,
-      required: true,
+      default: "",
       trim: true,
     },
 
-    // RECEIVER DETAILS
+    senderCity: {
+      type: String,
+      default: "",
+      trim: true,
+    },
+
+    senderState: {
+      type: String,
+      default: "",
+      trim: true,
+    },
+
+    senderPincode: {
+      type: String,
+      default: "",
+      trim: true,
+    },
+
+    // ----------------------------------------------
+    // RECEIVER INFORMATION
+    // ----------------------------------------------
 
     receiverName: {
       type: String,
-      required: true,
+      default: "",
+      trim: true,
+    },
+
+    receiverCompany: {
+      type: String,
+      default: "",
       trim: true,
     },
 
     receiverPhone: {
       type: String,
-      required: true,
+      default: "",
       trim: true,
+    },
+
+    receiverEmail: {
+      type: String,
+      default: "",
+      trim: true,
+      lowercase: true,
     },
 
     receiverAddress: {
       type: String,
-      required: true,
+      default: "",
       trim: true,
     },
 
-    // PACKAGE DETAILS
+    receiverCity: {
+      type: String,
+      default: "",
+      trim: true,
+    },
+
+    receiverState: {
+      type: String,
+      default: "",
+      trim: true,
+    },
+
+    receiverPincode: {
+      type: String,
+      default: "",
+      trim: true,
+    },
+
+    // ----------------------------------------------
+    // SHIPMENT INFORMATION
+    // ----------------------------------------------
+
+    origin: {
+      type: String,
+      default: "",
+      trim: true,
+    },
+
+    destination: {
+      type: String,
+      default: "",
+      trim: true,
+    },
 
     packageType: {
       type: String,
-      default: "Parcel",
+      default: "",
       trim: true,
     },
 
     weight: {
       type: Number,
-      default: undefined,
-      min: [0, "Weight cannot be negative."],
+      default: 0,
+      min: 0,
     },
 
     productCount: {
       type: Number,
       default: 1,
-      min: [1, "Product count must be at least 1."],
-      validate: {
-        validator: (value) =>
-          value === undefined ||
-          value === null ||
-          Number.isInteger(value),
-        message: "Product count must be a whole number.",
-      },
+      min: 0,
     },
 
-    // BILLING DETAILS
+    serviceType: {
+      type: String,
+      default: "",
+      trim: true,
+    },
+
+    // ----------------------------------------------
+    // BILLING INFORMATION
+    // ----------------------------------------------
 
     invoiceNumber: {
       type: String,
@@ -266,22 +321,20 @@ const shipmentSchema = new mongoose.Schema(
       trim: true,
     },
 
-    // SHIPMENT STATUS
-
-    status: {
-      type: String,
-      enum: ALLOWED_STATUSES,
-      default: "Shipment Booked",
-      required: true,
+    invoiceAmount: {
+      type: Number,
+      default: 0,
+      min: 0,
     },
 
-    // COMPATIBILITY FIELD FOR EXISTING FRONTEND
+    // ----------------------------------------------
+    // CURRENT SHIPMENT STATUS
+    // ----------------------------------------------
 
     currentStatus: {
       type: String,
       enum: ALLOWED_STATUSES,
       default: "Shipment Booked",
-      trim: true,
     },
 
     currentLocation: {
@@ -296,92 +349,139 @@ const shipmentSchema = new mongoose.Schema(
       trim: true,
     },
 
-    // TRACKING HISTORY
+    // ----------------------------------------------
+    // SHIPMENT HISTORY
+    // ----------------------------------------------
 
     history: {
       type: [shipmentHistorySchema],
       default: [],
     },
 
+    // ----------------------------------------------
     // SUPPORTING DOCUMENTS
-    // Files are stored in GridFS bucket: shipmentProofs
+    // ----------------------------------------------
 
     supportingDocuments: {
       type: [supportingDocumentSchema],
       default: [],
     },
 
+    // ----------------------------------------------
     // PROOF OF DELIVERY
-    // Existing functionality preserved.
+    // ----------------------------------------------
 
     proofOfDelivery: {
-      type: String,
-      default: "",
+      type: mongoose.Schema.Types.Mixed,
+      default: null,
+    },
+
+    // ----------------------------------------------
+    // ADDITIONAL INFORMATION
+    // ----------------------------------------------
+
+    createdBy: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "User",
+      default: null,
+    },
+
+    updatedBy: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "User",
+      default: null,
     },
   },
   {
     timestamps: true,
-    minimize: false,
+    strict: false,
   }
 );
 
 // --------------------------------------------------
-// STATUS SYNCHRONIZATION + AUTOMATIC HISTORY
+// PRE-SAVE MIDDLEWARE
 // --------------------------------------------------
 
 shipmentSchema.pre("save", function (next) {
   try {
-    // Normalize legacy status values and synchronize fields.
+    // Normalize current status.
+    if (this.currentStatus) {
+      this.currentStatus = this.currentStatus.trim();
+    }
 
-    const normalizedStatus = normalizeStatus(this.status);
+    // Normalize tracking number.
+    if (this.trackingNumber) {
+      this.trackingNumber = this.trackingNumber
+        .trim()
+        .toUpperCase();
+    }
 
-    this.status = normalizedStatus;
-    this.currentStatus = normalizedStatus;
+    // Normalize AWD number.
+    if (this.awdNumber) {
+      this.awdNumber = this.awdNumber.trim().toUpperCase();
+    }
 
-    // If controller already appended a history event,
-    // do not append another event automatically.
-
-    if (this.$locals.skipAutomaticHistory) {
-      this.$locals.skipAutomaticHistory = false;
+    // Skip automatic history when the controller is
+    // manually managing history entries.
+    if (this.$locals && this.$locals.skipAutomaticHistory) {
       return next();
     }
 
-    // Initial history for newly created shipments.
+    // Create initial history entry for a new shipment.
+    if (this.isNew && (!this.history || this.history.length === 0)) {
+      this.history = [
+        {
+          status: this.currentStatus || "Shipment Booked",
+          location: this.currentLocation || "",
+          remarks: this.remarks || "Shipment booking created.",
+          timestamp: this.bookingDate || new Date(),
+          supportingDocumentId: null,
+        },
+      ];
 
-    if (this.isNew) {
-      this.history.push({
-        status: this.status,
-        location: this.currentLocation || "",
-        remarks:
-          this.remarks || "Shipment booking created.",
-        timestamp: new Date(),
-      });
-    } else if (
-      this.isModified("status") ||
-      this.isModified("currentLocation") ||
-      this.isModified("remarks")
-    ) {
-      // Record status-related changes.
-      // Supporting document uploads alone do not create history.
+      return next();
+    }
 
+    // Add automatic history when shipment status,
+    // location, or remarks change.
+    const statusChanged = this.isModified("currentStatus");
+    const locationChanged = this.isModified("currentLocation");
+    const remarksChanged = this.isModified("remarks");
+
+    if (statusChanged || locationChanged || remarksChanged) {
       this.history.push({
-        status: this.status,
+        status: this.currentStatus || "Shipment Booked",
         location: this.currentLocation || "",
         remarks: this.remarks || "",
         timestamp: new Date(),
+        supportingDocumentId: null,
       });
     }
 
-    return next();
+    next();
   } catch (error) {
-    return next(error);
+    next(error);
   }
 });
+
+// --------------------------------------------------
+// INDEXES
+// --------------------------------------------------
+
+shipmentSchema.index({ trackingNumber: 1 }, { unique: true });
+shipmentSchema.index({ awdNumber: 1 });
+shipmentSchema.index({ currentStatus: 1 });
+shipmentSchema.index({ createdAt: -1 });
 
 // --------------------------------------------------
 // EXPORT MODEL
 // --------------------------------------------------
 
-module.exports =
+const Shipment =
   mongoose.models.Shipment ||
   mongoose.model("Shipment", shipmentSchema);
+
+module.exports = Shipment;
+
+// Export statuses if another file needs them.
+module.exports.ALLOWED_STATUSES = ALLOWED_STATUSES;

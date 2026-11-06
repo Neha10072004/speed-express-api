@@ -7,9 +7,9 @@ import {
 } from "../services/api";
 import "./TrackPackage.css";
 
-// --------------------------------------------------
+// ==================================================
 // SHIPMENT PROGRESS STEPS
-// --------------------------------------------------
+// ==================================================
 
 const STATUS_STEPS = [
   "Shipment Booked",
@@ -17,10 +17,9 @@ const STATUS_STEPS = [
   "Delivered Successfully",
 ];
 
-
-/* =========================================================
-   DATE AND TIME
-========================================================= */
+// ==================================================
+// DATE AND TIME - INDIA STANDARD TIME
+// ==================================================
 
 function formatDateTime(value) {
   if (!value) {
@@ -40,6 +39,7 @@ function formatDateTime(value) {
       year: "numeric",
       timeZone: "Asia/Kolkata",
     }),
+
     time: date.toLocaleTimeString("en-IN", {
       hour: "2-digit",
       minute: "2-digit",
@@ -49,9 +49,9 @@ function formatDateTime(value) {
   };
 }
 
-// --------------------------------------------------
+// ==================================================
 // FORMAT FILE SIZE
-// --------------------------------------------------
+// ==================================================
 
 function formatFileSize(bytes) {
   const size = Number(bytes);
@@ -71,44 +71,60 @@ function formatFileSize(bytes) {
   return `${(size / (1024 * 1024)).toFixed(2)} MB`;
 }
 
-// --------------------------------------------------
+// ==================================================
+// GET DOCUMENT ID
+// ==================================================
+
+function getDocumentId(document) {
+  return (
+    document?._id ||
+    document?.documentId ||
+    document?.id ||
+    ""
+  );
+}
+
+// ==================================================
 // GET SUPPORTING DOCUMENTS
-// --------------------------------------------------
+// ==================================================
 
 function getSupportingDocuments(shipment) {
-  const documents = Array.isArray(shipment?.supportingDocuments)
+  const documents = Array.isArray(
+    shipment?.supportingDocuments
+  )
     ? shipment.supportingDocuments
     : [];
 
   return documents
+    .filter(
+      (document) =>
+        document &&
+        document.visibleToCustomer !== false
+    )
     .map((document) => ({
       ...document,
 
-      _id:
-        document?._id ||
-        document?.documentId ||
-        document?.id ||
-        "",
+      _id: getDocumentId(document),
 
       originalName:
-        document?.originalName ||
-        document?.filename ||
-        document?.name ||
+        document.originalName ||
+        document.filename ||
+        document.name ||
         "Shipment Document",
 
       uploadedAt:
-        document?.uploadedAt ||
-        document?.createdAt ||
+        document.uploadedAt ||
+        document.createdAt ||
         null,
     }))
-    .filter((document) => document && document._id);
+    .filter((document) => document._id);
 }
 
-// --------------------------------------------------
+// ==================================================
 // GET SHIPMENT HISTORY
-// --------------------------------------------------
+// ==================================================
 
-function getShipmentHistory(shipment) {
+function getShipmentHistory(shipment, documents = []) {
   const events = Array.isArray(shipment?.history)
     ? shipment.history
     : Array.isArray(shipment?.statusHistory)
@@ -116,30 +132,64 @@ function getShipmentHistory(shipment) {
       : [];
 
   return events
-    .map((event, index) => ({
-      ...event,
+    .map((event, index) => {
+      const documentReference =
+        event.supportingDocument ||
+        event.document ||
+        null;
 
-      status:
-        event.status ||
-        event.currentStatus ||
-        "Status Updated",
+      const documentId =
+        event.supportingDocumentId ||
+        event.documentId ||
+        documentReference?._id ||
+        documentReference?.documentId ||
+        documentReference?.id ||
+        "";
 
-      location:
-        event.location ||
-        event.currentLocation ||
-        shipment.currentLocation ||
-        "Location unavailable",
+      const matchedDocument =
+        documents.find(
+          (document) =>
+            String(document._id) === String(documentId)
+        ) ||
+        (
+          documentReference
+            ? {
+                ...documentReference,
+                _id: getDocumentId(documentReference),
+              }
+            : null
+        );
 
-      remarks: event.remarks || "",
+      return {
+        ...event,
 
-      timestamp:
-        event.timestamp ||
-        event.updatedAt ||
-        event.createdAt ||
-        null,
+        status:
+          event.status ||
+          event.currentStatus ||
+          "Status Updated",
 
-      originalIndex: index,
-    }))
+        location:
+          event.location ||
+          event.currentLocation ||
+          shipment.currentLocation ||
+          "Location unavailable",
+
+        remarks: event.remarks || "",
+
+        timestamp:
+          event.timestamp ||
+          event.updatedAt ||
+          event.createdAt ||
+          null,
+
+        supportingDocument:
+          matchedDocument?._id
+            ? matchedDocument
+            : null,
+
+        originalIndex: index,
+      };
+    })
     .sort((a, b) => {
       const timeA = a.timestamp
         ? new Date(a.timestamp).getTime()
@@ -153,9 +203,9 @@ function getShipmentHistory(shipment) {
     });
 }
 
-// --------------------------------------------------
+// ==================================================
 // GET STATUS PROGRESS STEP
-// --------------------------------------------------
+// ==================================================
 
 function getStatusStep(status) {
   const value = String(status || "").toLowerCase();
@@ -184,9 +234,9 @@ function getStatusStep(status) {
   return 0;
 }
 
-// --------------------------------------------------
+// ==================================================
 // GET FIRST AVAILABLE VALUE
-// --------------------------------------------------
+// ==================================================
 
 function getValue(...values) {
   const value = values.find(
@@ -199,9 +249,9 @@ function getValue(...values) {
   return value ?? "—";
 }
 
-// --------------------------------------------------
+// ==================================================
 // SHIPMENT DETAIL ROW
-// --------------------------------------------------
+// ==================================================
 
 function DetailRow({ label, value }) {
   return (
@@ -217,19 +267,26 @@ function DetailRow({ label, value }) {
   );
 }
 
-// --------------------------------------------------
-// SUPPORTING DOCUMENTS SECTION
-// --------------------------------------------------
+// ==================================================
+// DOCUMENT ACTIONS
+// ==================================================
 
-function SupportingDocuments({
-  documents,
+function DocumentActions({
+  document,
   trackingNumber,
 }) {
-  if (!documents.length) {
+  const documentId = getDocumentId(document);
+
+  if (!documentId) {
     return null;
   }
 
-  const handleViewDocument = async (documentId) => {
+  const documentName =
+    document.originalName ||
+    document.filename ||
+    "Shipment Document";
+
+  const handleView = async () => {
     try {
       await viewSupportingDocument(
         trackingNumber,
@@ -237,22 +294,149 @@ function SupportingDocuments({
       );
     } catch (error) {
       console.error("View document error:", error);
-      alert("Unable to open this document. Please try again.");
+
+      alert(
+        "Unable to open this document. Please try again."
+      );
     }
   };
 
-  const handleDownloadDocument = async (documentId) => {
+  const handleDownload = async () => {
     try {
       await downloadSupportingDocument(
         trackingNumber,
         documentId,
-        documents.find((item) => item._id === documentId)?.originalName
+        documentName
       );
     } catch (error) {
       console.error("Download document error:", error);
-      alert("Unable to download this document. Please try again.");
+
+      alert(
+        "Unable to download this document. Please try again."
+      );
     }
   };
+
+  return (
+    <div className="tracking-document-actions">
+      <button
+        type="button"
+        className="tracking-document-view-button"
+        onClick={handleView}
+      >
+        <span aria-hidden="true">↗</span>
+        View Document
+      </button>
+
+      <button
+        type="button"
+        className="tracking-document-download-button"
+        onClick={handleDownload}
+      >
+        <span aria-hidden="true">↓</span>
+        Download
+      </button>
+    </div>
+  );
+}
+
+// ==================================================
+// DOCUMENT ITEM
+// ==================================================
+
+function DocumentItem({
+  document,
+  trackingNumber,
+}) {
+  const documentName =
+    document.originalName ||
+    document.filename ||
+    "Shipment Document";
+
+  const uploadedDate = formatDateTime(
+    document.uploadedAt
+  );
+
+  const isImage =
+    document.contentType?.startsWith("image/");
+
+  const isPdf =
+    document.contentType === "application/pdf";
+
+  return (
+    <div
+      className="tracking-document-item"
+      key={getDocumentId(document)}
+    >
+      <div className="tracking-document-icon">
+        {isImage ? "🖼️" : isPdf ? "📕" : "📄"}
+      </div>
+
+      <div className="tracking-document-info">
+        <h3>{documentName}</h3>
+
+        <div className="tracking-document-meta">
+          <span>
+            Uploaded: {uploadedDate.date}
+          </span>
+
+          <span>
+            {formatFileSize(document.size)}
+          </span>
+        </div>
+      </div>
+
+      <DocumentActions
+        document={document}
+        trackingNumber={trackingNumber}
+      />
+    </div>
+  );
+}
+
+// ==================================================
+// SUPPORTING DOCUMENTS SECTION
+// ==================================================
+
+function SupportingDocuments({
+  documents,
+  trackingNumber,
+  showEmptyMessage = false,
+  title = "Supporting Documents",
+}) {
+  if (!documents.length) {
+    if (!showEmptyMessage) {
+      return null;
+    }
+
+    return (
+      <section className="tracking-documents-section">
+        <div className="tracking-documents-heading">
+          <div>
+            <span className="tracking-eyebrow">
+              SHIPMENT ATTACHMENTS
+            </span>
+
+            <h2>{title}</h2>
+
+            <p>
+              Documents shared by Speed Express for your
+              shipment.
+            </p>
+          </div>
+
+          <span className="tracking-documents-count">
+            0 Documents
+          </span>
+        </div>
+
+        <div className="tracking-no-documents">
+          No customer-visible attachments are available
+          for this shipment.
+        </div>
+      </section>
+    );
+  }
 
   return (
     <section className="tracking-documents-section">
@@ -262,10 +446,11 @@ function SupportingDocuments({
             SHIPMENT ATTACHMENTS
           </span>
 
-          <h2>Supporting Documents</h2>
+          <h2>{title}</h2>
 
           <p>
-            Documents shared by Speed Express for your shipment.
+            Documents shared by Speed Express for your
+            shipment.
           </p>
         </div>
 
@@ -276,79 +461,54 @@ function SupportingDocuments({
       </div>
 
       <div className="tracking-documents-list">
-        {documents.map((document) => {
-          const documentId = document._id;
-
-          const documentName =
-            document.originalName ||
-            document.filename ||
-            "Shipment Document";
-
-          const uploadedDate = formatDateTime(
-            document.uploadedAt
-          );
-
-          return (
-            <div
-              className="tracking-document-item"
-              key={documentId}
-            >
-              <div className="tracking-document-icon">
-                {document.contentType?.startsWith("image/")
-                  ? "🖼️"
-                  : document.contentType === "application/pdf"
-                    ? "📕"
-                    : "📄"}
-              </div>
-
-              <div className="tracking-document-info">
-                <h3>{documentName}</h3>
-
-                <div className="tracking-document-meta">
-                  <span>
-                    Uploaded: {uploadedDate.date}
-                  </span>
-
-                  <span>
-                    {formatFileSize(document.size)}
-                  </span>
-                </div>
-              </div>
-
-              <div className="tracking-document-actions">
-                <button
-                  type="button"
-                  className="tracking-document-view-button"
-                  onClick={() =>
-                    handleViewDocument(documentId)
-                  }
-                >
-                  <span aria-hidden="true">↗</span>
-                  View Document
-                </button>
-
-                <button
-                  type="button"
-                  className="tracking-document-download-button"
-                  onClick={() =>
-                    handleDownloadDocument(documentId)
-                  }
-                >
-                  <span aria-hidden="true">↓</span>
-                  Download
-                </button>
-              </div>
-            </div>
-          );
-        })}
+        {documents.map((document) => (
+          <DocumentItem
+            key={getDocumentId(document)}
+            document={document}
+            trackingNumber={trackingNumber}
+          />
+        ))}
       </div>
     </section>
   );
 }
 
-// --------------------------------------------------
+// ==================================================
+// DOCUMENT UNDER A STATUS SCAN
+// ==================================================
+
+function ScanDocument({
+  document,
+  trackingNumber,
+}) {
+  if (!document) {
+    return null;
+  }
+
+  const documentName =
+    document.originalName ||
+    document.filename ||
+    "Shipment Document";
+
+  return (
+    <div className="tracking-scan-document">
+      <div className="tracking-scan-document-name">
+        <span aria-hidden="true">📎</span>
+
+        <span>{documentName}</span>
+      </div>
+
+      <DocumentActions
+        document={document}
+        trackingNumber={trackingNumber}
+      />
+    </div>
+  );
+}
+
+// ==================================================
 // TRACK PACKAGE COMPONENT
-// --------------------------------------------------
+// ==================================================
 
 export default function TrackPackage() {
   const [identifier, setIdentifier] = useState("");
@@ -359,9 +519,9 @@ export default function TrackPackage() {
   const [searched, setSearched] = useState(false);
   const [error, setError] = useState("");
 
-  // ------------------------------------------------
+  // ==================================================
   // SEARCH SHIPMENT
-  // ------------------------------------------------
+  // ==================================================
 
   const handleSearch = async (event) => {
     event.preventDefault();
@@ -391,7 +551,10 @@ export default function TrackPackage() {
 
       const data = response?.data || response;
 
-      console.log("FULL TRACKING API RESPONSE:", data);
+      console.log(
+        "FULL TRACKING API RESPONSE:",
+        data
+      );
 
       const foundShipment =
         data?.shipment ||
@@ -413,16 +576,19 @@ export default function TrackPackage() {
         foundShipment?.supportingDocuments || []
       );
 
+      const normalizedDocuments =
+        getSupportingDocuments(foundShipment);
+
       const normalizedHistory =
-        getShipmentHistory(foundShipment);
+        getShipmentHistory(
+          foundShipment,
+          normalizedDocuments
+        );
 
       console.log(
         "NORMALIZED SHIPMENT HISTORY:",
         normalizedHistory
       );
-
-      const normalizedDocuments =
-        getSupportingDocuments(foundShipment);
 
       console.log(
         "NORMALIZED SUPPORTING DOCUMENTS:",
@@ -453,9 +619,10 @@ export default function TrackPackage() {
       setLoading(false);
     }
   };
-  // ------------------------------------------------
+
+  // ==================================================
   // CLEAR SEARCH
-  // ------------------------------------------------
+  // ==================================================
 
   const handleClear = () => {
     setIdentifier("");
@@ -466,9 +633,9 @@ export default function TrackPackage() {
     setActiveTab("details");
   };
 
-  // ------------------------------------------------
+  // ==================================================
   // SHIPMENT INFORMATION
-  // ------------------------------------------------
+  // ==================================================
 
   const status = getValue(
     shipment?.currentStatus,
@@ -523,9 +690,33 @@ export default function TrackPackage() {
   const supportingDocuments =
     getSupportingDocuments(shipment);
 
-  // ------------------------------------------------
+  // ==================================================
+  // FIND DOCUMENTS ALREADY LINKED TO HISTORY
+  // ==================================================
+
+  const linkedDocumentIds = new Set(
+    history
+      .map((event) =>
+        getDocumentId(event.supportingDocument)
+      )
+      .filter(Boolean)
+      .map(String)
+  );
+
+  // Documents without a matching history link are
+  // displayed separately so the customer can still
+  // open or download them.
+
+  const unlinkedDocuments = supportingDocuments.filter(
+    (document) =>
+      !linkedDocumentIds.has(
+        String(getDocumentId(document))
+      )
+  );
+
+  // ==================================================
   // RENDER
-  // ------------------------------------------------
+  // ==================================================
 
   return (
     <main className="tracking-page">
@@ -542,8 +733,8 @@ export default function TrackPackage() {
           <h1>Track Your Shipment</h1>
 
           <p>
-            Follow your shipment from booking to final delivery
-            with the latest status updates.
+            Follow your shipment from booking to final
+            delivery with the latest status updates.
           </p>
 
           <form
@@ -551,7 +742,6 @@ export default function TrackPackage() {
             onSubmit={handleSearch}
           >
             <div className="tracking-input-wrap">
-
               <span
                 className="tracking-search-icon"
                 aria-hidden="true"
@@ -568,7 +758,6 @@ export default function TrackPackage() {
                 placeholder="Enter Tracking Number or AWD Number"
                 aria-label="Tracking number or AWD number"
               />
-
             </div>
 
             <button
@@ -580,14 +769,13 @@ export default function TrackPackage() {
                 ? "Searching..."
                 : "Track Shipment"}
             </button>
-
           </form>
 
           <div className="tracking-search-hint">
             <span aria-hidden="true">🔒</span>
-            Enter your shipment tracking number to view its status.
+            Enter your shipment tracking number to view
+            its status.
           </div>
-
         </div>
       </section>
 
@@ -611,7 +799,6 @@ export default function TrackPackage() {
           !error &&
           !searched && (
             <div className="tracking-empty-state">
-
               <div className="tracking-empty-icon">
                 📦
               </div>
@@ -619,10 +806,10 @@ export default function TrackPackage() {
               <h2>Your shipment journey starts here</h2>
 
               <p>
-                Enter your tracking number or AWD number above
-                to view shipment details and status scans.
+                Enter your tracking number or AWD number
+                above to view shipment details and status
+                scans.
               </p>
-
             </div>
           )}
 
@@ -630,13 +817,11 @@ export default function TrackPackage() {
 
         {loading && (
           <div className="tracking-loading">
-
             <span className="tracking-spinner" />
 
             <p>
               Retrieving your shipment information...
             </p>
-
           </div>
         )}
 
@@ -650,7 +835,6 @@ export default function TrackPackage() {
             <section className="tracking-summary-card">
 
               <div className="tracking-summary-top">
-
                 <div>
                   <span className="tracking-small-label">
                     WAYBILL / TRACKING NUMBER
@@ -664,7 +848,6 @@ export default function TrackPackage() {
                 </div>
 
                 <div className="tracking-status-block">
-
                   <span className="tracking-small-label">
                     CURRENT STATUS
                   </span>
@@ -680,14 +863,10 @@ export default function TrackPackage() {
                             : "status-booked"
                     }`}
                   >
-
                     <span className="tracking-status-dot" />
                     {status}
-
                   </span>
-
                 </div>
-
               </div>
 
               <div className="tracking-summary-bottom">
@@ -720,9 +899,7 @@ export default function TrackPackage() {
                 >
                   Track Another
                 </button>
-
               </div>
-
             </section>
 
             {/* SHIPMENT PROGRESS */}
@@ -730,7 +907,6 @@ export default function TrackPackage() {
             <section className="tracking-progress-card">
 
               <div className="tracking-section-heading">
-
                 <div>
                   <span className="tracking-eyebrow">
                     DELIVERY JOURNEY
@@ -743,7 +919,6 @@ export default function TrackPackage() {
                   {history.length} status update
                   {history.length === 1 ? "" : "s"}
                 </span>
-
               </div>
 
               <div
@@ -751,9 +926,7 @@ export default function TrackPackage() {
                   isCancelled ? "progress-cancelled" : ""
                 }`}
               >
-
                 {STATUS_STEPS.map((step, index) => {
-
                   const completed =
                     !isCancelled && currentStep >= index;
 
@@ -767,7 +940,6 @@ export default function TrackPackage() {
                       } ${active ? "active" : ""}`}
                       key={step}
                     >
-
                       <div className="tracking-progress-marker">
                         {completed ? "✓" : index + 1}
                       </div>
@@ -781,20 +953,18 @@ export default function TrackPackage() {
                           Current stage
                         </div>
                       )}
-
                     </div>
                   );
                 })}
-
               </div>
 
               {isCancelled && (
                 <p className="tracking-cancelled-note">
-                  This shipment has been cancelled. Please contact
-                  Speed Express for further information.
+                  This shipment has been cancelled. Please
+                  contact Speed Express for further
+                  information.
                 </p>
               )}
-
             </section>
 
             {/* SHIPMENT INFORMATION TABS */}
@@ -836,10 +1006,11 @@ export default function TrackPackage() {
                     {history.length}
                   </span>
                 </button>
-
               </div>
 
-              {/* DETAILS TAB */}
+              {/* ======================================
+                  DETAILS TAB
+              ====================================== */}
 
               {activeTab === "details" && (
                 <div className="tracking-details-panel">
@@ -1000,20 +1171,20 @@ export default function TrackPackage() {
                         shipment?.remarks
                       )}
                     />
-
                   </div>
-
-                  {/* SUPPORTING DOCUMENTS */}
 
                   <SupportingDocuments
                     documents={supportingDocuments}
                     trackingNumber={trackingNumber}
+                    title="Supporting Documents"
+                    showEmptyMessage={true}
                   />
-
                 </div>
               )}
 
-              {/* STATUS AND SCANS TAB */}
+              {/* ======================================
+                  STATUS AND SCANS TAB
+              ====================================== */}
 
               {activeTab === "scans" && (
                 <div className="tracking-scans-panel">
@@ -1023,7 +1194,6 @@ export default function TrackPackage() {
                   </div>
 
                   {history.length > 0 ? (
-
                     <div className="tracking-history-table-wrap">
 
                       <table className="tracking-history-table">
@@ -1038,9 +1208,7 @@ export default function TrackPackage() {
                         </thead>
 
                         <tbody>
-
                           {history.map((event, index) => {
-
                             const dateTime =
                               formatDateTime(event.timestamp);
 
@@ -1051,10 +1219,10 @@ export default function TrackPackage() {
                                   `${event.timestamp}-${index}`
                                 }
                               >
-
                                 <td>
                                   <span className="tracking-location-cell">
                                     <span className="tracking-scan-dot" />
+
                                     {event.location}
                                   </span>
                                 </td>
@@ -1069,27 +1237,30 @@ export default function TrackPackage() {
                                       {event.remarks}
                                     </p>
                                   )}
+
+                                  {/* DOCUMENT LINKED TO THIS SCAN */}
+
+                                  <ScanDocument
+                                    document={event.supportingDocument}
+                                    trackingNumber={trackingNumber}
+                                  />
                                 </td>
 
                                 <td>{dateTime.date}</td>
-                                <td>{dateTime.time}</td>
 
+                                <td>{dateTime.time}</td>
                               </tr>
                             );
                           })}
-
                         </tbody>
-
                       </table>
 
                       <div className="tracking-table-footer">
-                        All displayed times use India Standard Time (IST).
+                        All displayed times use India
+                        Standard Time (IST).
                       </div>
-
                     </div>
-
                   ) : (
-
                     <div className="tracking-no-history">
 
                       <div className="tracking-empty-icon">
@@ -1099,22 +1270,37 @@ export default function TrackPackage() {
                       <h3>No status scans available</h3>
 
                       <p>
-                        Status updates will appear here when the
-                        shipment history is saved in the system.
+                        Status updates will appear here when
+                        the shipment history is saved in the
+                        system.
                       </p>
-
                     </div>
-
                   )}
 
+                  {/* ==================================
+                      UNLINKED DOCUMENT FALLBACK
+                  ================================== */}
+
+                  {unlinkedDocuments.length > 0 && (
+                    <SupportingDocuments
+                      documents={unlinkedDocuments}
+                      trackingNumber={trackingNumber}
+                      title="Other Shipment Attachments"
+                      showEmptyMessage={false}
+                    />
+                  )}
+
+                  {supportingDocuments.length === 0 && (
+                    <div className="tracking-no-documents">
+                      No customer-visible attachments are
+                      available for this shipment.
+                    </div>
+                  )}
                 </div>
               )}
-
             </section>
-
           </>
         )}
-
       </section>
     </main>
   );
