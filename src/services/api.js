@@ -39,16 +39,10 @@ const getLoginUser = () => {
 const getAuthToken = () => {
   const user = getLoginUser();
 
-  // Token stored inside the login user object.
-  if (user?.token) {
-    return user.token;
-  }
+  if (user?.token) return user.token;
 
-  if (user?.authToken) {
-    return user.authToken;
-  }
+  if (user?.authToken) return user.authToken;
 
-  // Token stored separately.
   return (
     localStorage.getItem("speedExpressToken") ||
     sessionStorage.getItem("speedExpressToken") ||
@@ -71,9 +65,7 @@ const getAuthHeaders = (required = false) => {
   }
 
   return token
-    ? {
-        Authorization: `Bearer ${token}`,
-      }
+    ? { Authorization: `Bearer ${token}` }
     : {};
 };
 
@@ -94,8 +86,6 @@ const fetchApi = async (
     ...(options.headers || {}),
   };
 
-  // Do not manually set Content-Type for FormData.
-  // The browser automatically adds the multipart boundary.
   const isFormData =
     typeof FormData !== "undefined" &&
     options.body instanceof FormData;
@@ -151,6 +141,61 @@ const fetchApi = async (
 
 
 /* ============================================================
+   FILE REQUEST HELPER
+   Used for supporting document view and download.
+============================================================ */
+
+const fetchSupportingDocument = async (
+  url,
+  trackingNumber,
+  documentId
+) => {
+  if (!trackingNumber || !documentId) {
+    throw new Error(
+      "Tracking number and document ID are required."
+    );
+  }
+
+  let response;
+
+  try {
+    response = await fetch(url, {
+      method: "GET",
+      headers: {
+        ...getAuthHeaders(false),
+        Accept: "*/*",
+      },
+    });
+  } catch (error) {
+    console.error("Supporting document request failed:", error);
+
+    throw new Error(
+      "Unable to connect to the server to retrieve the document."
+    );
+  }
+
+  if (!response.ok) {
+    const contentType =
+      response.headers.get("content-type") || "";
+
+    let message = `Unable to retrieve document (${response.status}).`;
+
+    if (contentType.includes("application/json")) {
+      const result = await response.json().catch(() => null);
+      message = result?.message || message;
+    } else {
+      const result = await response.text().catch(() => "");
+      if (result) message = result;
+    }
+
+    throw new Error(message);
+  }
+
+  return response.blob();
+};
+
+
+/* ============================================================
    BACKEND HEALTH CHECK
    GET /api/health
 ============================================================ */
@@ -163,7 +208,6 @@ export const checkBackendHealth = async () => {
 /* ============================================================
    CREATE SHIPMENT
    POST /api/shipments
-   Admin / Staff
 ============================================================ */
 
 export const createShipment = async (shipmentData) => {
@@ -197,7 +241,6 @@ export const createShipment = async (shipmentData) => {
 /* ============================================================
    GET ALL SHIPMENTS
    GET /api/shipments
-   Admin / Staff
 ============================================================ */
 
 export const getAllShipments = async () => {
@@ -217,7 +260,7 @@ export const getAllShipments = async () => {
 /* ============================================================
    GET ONE SHIPMENT
    GET /api/shipments/:identifier
-   Public tracking
+   PUBLIC TRACKING
 ============================================================ */
 
 export const trackShipment = async (identifier) => {
@@ -243,8 +286,7 @@ export const trackShipment = async (identifier) => {
 
 /* ============================================================
    UPDATE SHIPMENT DETAILS
-   PUT /api/shipments/:identifier
-   Admin / Staff
+   PATCH /api/shipments/:identifier
 ============================================================ */
 
 export const updateShipment = async (
@@ -273,7 +315,7 @@ export const updateShipment = async (
   return fetchApi(
     `${API_URL}/shipments/${encodeURIComponent(identifier)}`,
     {
-      method: "PUT",
+      method: "PATCH",
       headers,
       body,
     },
@@ -285,29 +327,6 @@ export const updateShipment = async (
 /* ============================================================
    UPDATE SHIPMENT STATUS
    PATCH /api/shipments/:trackingNumber/status
-
-   Admin / Staff
-
-   Supports both formats:
-
-   1. Object format:
-      updateShipmentStatus(trackingNumber, {
-        status,
-        location,
-        remarks,
-        eventDateTime,
-        proofFile
-      });
-
-   2. Older positional format:
-      updateShipmentStatus(
-        trackingNumber,
-        status,
-        location,
-        remarks,
-        proofFile,
-        eventDateTime
-      );
 ============================================================ */
 
 export const updateShipmentStatus = async (
@@ -318,18 +337,13 @@ export const updateShipmentStatus = async (
   proofFile = null,
   eventDateTime = ""
 ) => {
-  // Validate tracking number or AWD number.
   if (!identifier || !String(identifier).trim()) {
     throw new Error("Tracking number is required.");
   }
 
   let statusData = {};
 
-  // ----------------------------------------------------------
-  // OBJECT FORMAT
-  // Used by the current Status.jsx
-  // ----------------------------------------------------------
-
+  // Object format
   if (
     statusOrData &&
     typeof statusOrData === "object" &&
@@ -337,21 +351,17 @@ export const updateShipmentStatus = async (
   ) {
     statusData = statusOrData;
   } else {
-    // --------------------------------------------------------
-    // OLD POSITIONAL FORMAT
-    // Maintains compatibility with older components.
-    // --------------------------------------------------------
-
+    // Older positional format
     statusData = {
       status: statusOrData,
       location,
       remarks,
       proofFile,
       eventDateTime,
+      visibleToCustomer: false,
     };
   }
 
-  // Extract values safely.
   const finalStatus = String(
     statusData.status || ""
   ).trim();
@@ -372,9 +382,9 @@ export const updateShipmentStatus = async (
   const finalEventDateTime =
     statusData.eventDateTime || "";
 
-  // ----------------------------------------------------------
-  // VALIDATION
-  // ----------------------------------------------------------
+  const finalVisibleToCustomer =
+    statusData.visibleToCustomer === true ||
+    String(statusData.visibleToCustomer).toLowerCase() === "true";
 
   if (!finalStatus) {
     throw new Error("Shipment status is required.");
@@ -386,9 +396,9 @@ export const updateShipmentStatus = async (
     );
   }
 
-  // ----------------------------------------------------------
-  // CREATE FORMDATA
-  // ----------------------------------------------------------
+  if (finalProofFile && !(finalProofFile instanceof File)) {
+    throw new Error("Please select a valid document file.");
+  }
 
   const formData = new FormData();
 
@@ -397,22 +407,17 @@ export const updateShipmentStatus = async (
   formData.append("remarks", finalRemarks);
 
   if (finalEventDateTime) {
-    formData.append(
-      "eventDateTime",
-      finalEventDateTime
-    );
+    formData.append("eventDateTime", finalEventDateTime);
   }
 
   if (finalProofFile) {
+    formData.append("proofFile", finalProofFile);
+
     formData.append(
-      "proofFile",
-      finalProofFile
+      "visibleToCustomer",
+      String(finalVisibleToCustomer)
     );
   }
-
-  // ----------------------------------------------------------
-  // SEND REQUEST TO BACKEND
-  // ----------------------------------------------------------
 
   return fetchApi(
     `${API_URL}/shipments/${encodeURIComponent(
@@ -428,9 +433,131 @@ export const updateShipmentStatus = async (
 
 
 /* ============================================================
+   SUPPORTING DOCUMENT VIEW URL
+============================================================ */
+
+export const getSupportingDocumentViewUrl = (
+  trackingNumber,
+  documentId
+) => {
+  if (!trackingNumber || !documentId) {
+    throw new Error(
+      "Tracking number and document ID are required."
+    );
+  }
+
+  return (
+    `${API_URL}/shipments/` +
+    `${encodeURIComponent(trackingNumber)}/documents/` +
+    `${encodeURIComponent(documentId)}/view`
+  );
+};
+
+
+/* ============================================================
+   SUPPORTING DOCUMENT DOWNLOAD URL
+============================================================ */
+
+export const getSupportingDocumentDownloadUrl = (
+  trackingNumber,
+  documentId
+) => {
+  if (!trackingNumber || !documentId) {
+    throw new Error(
+      "Tracking number and document ID are required."
+    );
+  }
+
+  return (
+    `${API_URL}/shipments/` +
+    `${encodeURIComponent(trackingNumber)}/documents/` +
+    `${encodeURIComponent(documentId)}/download`
+  );
+};
+
+
+/* ============================================================
+   VIEW SUPPORTING DOCUMENT
+============================================================ */
+
+export const viewSupportingDocument = async (
+  trackingNumber,
+  documentId
+) => {
+  const url = getSupportingDocumentViewUrl(
+    trackingNumber,
+    documentId
+  );
+
+  const blob = await fetchSupportingDocument(
+    url,
+    trackingNumber,
+    documentId
+  );
+
+  const objectUrl = URL.createObjectURL(blob);
+
+  const newWindow = window.open(
+    objectUrl,
+    "_blank",
+    "noopener,noreferrer"
+  );
+
+  if (!newWindow) {
+    URL.revokeObjectURL(objectUrl);
+
+    throw new Error(
+      "The document window was blocked. Please allow pop-ups and try again."
+    );
+  }
+
+  // Revoke the temporary URL after the document has had time to load.
+  window.setTimeout(() => {
+    URL.revokeObjectURL(objectUrl);
+  }, 60000);
+};
+
+
+/* ============================================================
+   DOWNLOAD SUPPORTING DOCUMENT
+============================================================ */
+
+export const downloadSupportingDocument = async (
+  trackingNumber,
+  documentId,
+  filename = "shipment-document"
+) => {
+  const url = getSupportingDocumentDownloadUrl(
+    trackingNumber,
+    documentId
+  );
+
+  const blob = await fetchSupportingDocument(
+    url,
+    trackingNumber,
+    documentId
+  );
+
+  const objectUrl = URL.createObjectURL(blob);
+
+  const link = document.createElement("a");
+
+  link.href = objectUrl;
+  link.download = filename;
+
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+
+  window.setTimeout(() => {
+    URL.revokeObjectURL(objectUrl);
+  }, 1000);
+};
+
+
+/* ============================================================
    DELETE SHIPMENT
    DELETE /api/shipments/:identifier
-   Admin
 ============================================================ */
 
 export const deleteShipment = async (identifier) => {
@@ -453,12 +580,11 @@ export const deleteShipment = async (identifier) => {
     true
   );
 };
-
+  
 
 /* ============================================================
    GET SHIPPING LABEL
    GET /api/shipments/:identifier/label
-   Admin / Staff
 ============================================================ */
 
 export const getShippingLabel = async (identifier) => {
@@ -475,19 +601,14 @@ export const getShippingLabel = async (identifier) => {
 
   try {
     response = await fetch(
-      `${API_URL}/shipments/${encodeURIComponent(
-        identifier
-      )}/label`,
+      `${API_URL}/shipments/${encodeURIComponent(identifier)}/label`,
       {
         method: "GET",
         headers,
       }
     );
   } catch (error) {
-    console.error(
-      "Shipping label request failed:",
-      error
-    );
+    console.error("Shipping label request failed:", error);
 
     throw new Error(
       "Unable to connect to the server to download the shipping label."
@@ -522,12 +643,12 @@ export const downloadShippingLabel = async (identifier) => {
   link.download = `SpeedExpress-Label-${identifier}.pdf`;
 
   document.body.appendChild(link);
-
   link.click();
-
   link.remove();
 
-  URL.revokeObjectURL(objectUrl);
+  window.setTimeout(() => {
+    URL.revokeObjectURL(objectUrl);
+  }, 1000);
 };
 
 
@@ -558,7 +679,7 @@ export const printShippingLabel = async (identifier) => {
     printWindow.print();
   });
 
-  setTimeout(() => {
+  window.setTimeout(() => {
     URL.revokeObjectURL(objectUrl);
   }, 60000);
 };
@@ -574,21 +695,21 @@ const api = {
   checkBackendHealth,
 
   createShipment,
-
   getAllShipments,
-
   trackShipment,
 
   updateShipment,
-
   updateShipmentStatus,
+
+  getSupportingDocumentViewUrl,
+  getSupportingDocumentDownloadUrl,
+  viewSupportingDocument,
+  downloadSupportingDocument,
 
   deleteShipment,
 
   getShippingLabel,
-
   downloadShippingLabel,
-
   printShippingLabel,
 };
 

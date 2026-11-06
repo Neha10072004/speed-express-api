@@ -1,7 +1,7 @@
+
 import React, { useRef, useState } from "react";
 import { updateShipmentStatus } from "../services/api";
 import "./Status.css";
-
 
 // Get the current date and time in India Standard Time.
 const getIndiaDateTimeLocal = () => {
@@ -38,6 +38,7 @@ const formatIndiaDateTime = (value) => {
       month: "short",
       year: "numeric",
     }).format(date),
+
     time: new Intl.DateTimeFormat("en-IN", {
       timeZone: "Asia/Kolkata",
       hour: "2-digit",
@@ -47,29 +48,33 @@ const formatIndiaDateTime = (value) => {
   };
 };
 
-
 const API_BASE_URL = (
-  import.meta.env.VITE_API_URL ||
-  "https://api.speedexp.in/api"
+  import.meta.env.VITE_API_URL || "https://api.speedexp.in/api"
 ).replace(/\/+$/, "");
 
 // datetime-local values are interpreted as India Standard Time (UTC+05:30).
 function convertISTInputToISOString(value) {
-  if (!value) throw new Error("Please select the shipment event date and time.");
+  if (!value) {
+    throw new Error("Please select the shipment event date and time.");
+  }
 
   const match = String(value).match(
     /^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2})(?::(\d{2}))?$/
   );
 
-  if (!match) throw new Error("Invalid event date and time format.");
+  if (!match) {
+    throw new Error("Invalid event date and time format.");
+  }
 
   const [, y, m, d, hh, mm, ss = "00"] = match;
+
   const year = Number(y);
   const month = Number(m);
   const day = Number(d);
   const hour = Number(hh);
   const minute = Number(mm);
   const second = Number(ss);
+
   const check = new Date(Date.UTC(year, month - 1, day));
 
   if (
@@ -84,15 +89,19 @@ function convertISTInputToISOString(value) {
   }
 
   const parsed = new Date(`${y}-${m}-${d}T${hh}:${mm}:${ss}+05:30`);
+
   if (Number.isNaN(parsed.getTime())) {
     throw new Error("Invalid shipment event date/time.");
   }
+
   return parsed.toISOString();
 }
 
 function toISTDateTimeLocal(value) {
   if (!value) return "";
+
   const date = new Date(value);
+
   if (Number.isNaN(date.getTime())) return "";
 
   const parts = new Intl.DateTimeFormat("en-CA", {
@@ -322,9 +331,14 @@ function Status() {
 
   const [form, setForm] = useState(INITIAL_FORM);
   const [proofFile, setProofFile] = useState(null);
+
+  // Customer visibility is OFF by default.
+  const [visibleToCustomer, setVisibleToCustomer] = useState(false);
+
   const [eventDateTime, setEventDateTime] = useState(
     getIndiaDateTimeLocal
   );
+
   const [loading, setLoading] = useState(false);
   const [success, setSuccess] = useState("");
   const [error, setError] = useState("");
@@ -337,13 +351,13 @@ function Status() {
   const [historyError, setHistoryError] = useState("");
   const [historySuccess, setHistorySuccess] = useState("");
   const [selectedHistoryId, setSelectedHistoryId] = useState("");
+
   const [editHistoryForm, setEditHistoryForm] = useState({
     status: "",
     location: "",
     remarks: "",
     eventDateTime: "",
   });
-
 
   const selectedStatus = STATUS_OPTIONS.find(
     (item) => item.value === form.status
@@ -367,6 +381,12 @@ function Status() {
     setError("");
   };
 
+  const handleVisibilityChange = (event) => {
+    setVisibleToCustomer(event.target.checked);
+    setSuccess("");
+    setError("");
+  };
+
   const handleFileChange = (event) => {
     const file = event.target.files?.[0] || null;
 
@@ -375,6 +395,7 @@ function Status() {
 
     if (!file) {
       setProofFile(null);
+      setVisibleToCustomer(false);
       return;
     }
 
@@ -387,6 +408,7 @@ function Status() {
 
       event.target.value = "";
       setProofFile(null);
+      setVisibleToCustomer(false);
       return;
     }
 
@@ -395,14 +417,17 @@ function Status() {
 
       event.target.value = "";
       setProofFile(null);
+      setVisibleToCustomer(false);
       return;
     }
 
     setProofFile(file);
+    setVisibleToCustomer(false);
   };
 
   const removeProofFile = () => {
     setProofFile(null);
+    setVisibleToCustomer(false);
 
     if (fileInputRef.current) {
       fileInputRef.current.value = "";
@@ -442,6 +467,7 @@ function Status() {
     }
 
     let eventDateTimeISO;
+
     try {
       eventDateTimeISO = convertISTInputToISOString(eventDateTime);
     } catch (dateError) {
@@ -452,15 +478,18 @@ function Status() {
     try {
       setLoading(true);
 
-      // The API service must append eventDateTime to FormData.
-      // The backend must save this timestamp in shipment history.
-const response = await updateShipmentStatus(trackingNumber, {
-  status: form.status,
-  location,
-  remarks: form.remarks.trim(),
-  eventDateTime: eventDateTimeISO,
-  ...(proofFile ? { proofFile } : {}),
-});
+      // Send status, event date/time, optional file,
+      // and customer visibility in one API request.
+      const response = await updateShipmentStatus(trackingNumber, {
+        status: form.status,
+        location,
+        remarks: form.remarks.trim(),
+        eventDateTime: eventDateTimeISO,
+        ...(proofFile ? { proofFile } : {}),
+        visibleToCustomer: proofFile
+          ? visibleToCustomer
+          : false,
+      });
 
       const shipment = response?.shipment || null;
       const formattedDateTime = formatIndiaDateTime(eventDateTime);
@@ -479,6 +508,9 @@ const response = await updateShipmentStatus(trackingNumber, {
         currentTime:
           formattedDateTime?.time || "",
         eventDateTime,
+        documentVisibleToCustomer: proofFile
+          ? visibleToCustomer
+          : false,
       });
 
       setSuccess(
@@ -496,6 +528,7 @@ const response = await updateShipmentStatus(trackingNumber, {
       }));
 
       setProofFile(null);
+      setVisibleToCustomer(false);
 
       if (fileInputRef.current) {
         fileInputRef.current.value = "";
@@ -513,6 +546,7 @@ const response = await updateShipmentStatus(trackingNumber, {
     setForm({ ...INITIAL_FORM });
     setEventDateTime(getIndiaDateTimeLocal());
     setProofFile(null);
+    setVisibleToCustomer(false);
     setSuccess("");
     setError("");
     setUpdatedShipment(null);
@@ -522,9 +556,9 @@ const response = await updateShipmentStatus(trackingNumber, {
     }
   };
 
-
   const loadHistoryShipment = async (event) => {
     event.preventDefault();
+
     const identifier = historySearch.trim();
 
     setHistoryError("");
@@ -539,6 +573,7 @@ const response = await updateShipmentStatus(trackingNumber, {
 
     try {
       setHistoryLoading(true);
+
       const response = await fetch(
         `${API_BASE_URL}/shipments/${encodeURIComponent(identifier)}`,
         {
@@ -549,6 +584,7 @@ const response = await updateShipmentStatus(trackingNumber, {
       );
 
       const data = await response.json().catch(() => ({}));
+
       if (!response.ok || data.success === false) {
         throw new Error(
           data.message || "Shipment not found. Please check the number."
@@ -556,12 +592,16 @@ const response = await updateShipmentStatus(trackingNumber, {
       }
 
       const found = data.shipment || data.data || data;
+
       if (!found || !Array.isArray(found.history)) {
         throw new Error("Shipment history was not returned by the server.");
       }
+
       setHistoryShipment(found);
     } catch (loadError) {
-      setHistoryError(loadError.message || "Unable to load shipment history.");
+      setHistoryError(
+        loadError.message || "Unable to load shipment history."
+      );
     } finally {
       setHistoryLoading(false);
     }
@@ -578,6 +618,7 @@ const response = await updateShipmentStatus(trackingNumber, {
     setHistoryError("");
     setHistorySuccess("");
     setSelectedHistoryId(entry._id);
+
     setEditHistoryForm({
       status: entry.status || "",
       location: entry.location || "",
@@ -588,13 +629,19 @@ const response = await updateShipmentStatus(trackingNumber, {
 
   const handleHistoryEditChange = (event) => {
     const { name, value } = event.target;
-    setEditHistoryForm((previous) => ({ ...previous, [name]: value }));
+
+    setEditHistoryForm((previous) => ({
+      ...previous,
+      [name]: value,
+    }));
+
     setHistoryError("");
     setHistorySuccess("");
   };
 
   const saveHistoryEntry = async (event) => {
     event.preventDefault();
+
     setHistoryError("");
     setHistorySuccess("");
 
@@ -602,14 +649,21 @@ const response = await updateShipmentStatus(trackingNumber, {
       setHistoryError("Load a shipment and select a history entry first.");
       return;
     }
-    if (!editHistoryForm.status || !editHistoryForm.location.trim()) {
+
+    if (
+      !editHistoryForm.status ||
+      !editHistoryForm.location.trim()
+    ) {
       setHistoryError("Status and location are required.");
       return;
     }
 
     let timestamp;
+
     try {
-      timestamp = convertISTInputToISOString(editHistoryForm.eventDateTime);
+      timestamp = convertISTInputToISOString(
+        editHistoryForm.eventDateTime
+      );
     } catch (dateError) {
       setHistoryError(dateError.message);
       return;
@@ -617,6 +671,7 @@ const response = await updateShipmentStatus(trackingNumber, {
 
     try {
       setHistorySaving(true);
+
       const response = await fetch(
         `${API_BASE_URL}/shipments/${encodeURIComponent(
           historyShipment.trackingNumber
@@ -638,6 +693,7 @@ const response = await updateShipmentStatus(trackingNumber, {
       );
 
       const data = await response.json().catch(() => ({}));
+
       if (!response.ok || data.success === false) {
         throw new Error(
           data.message || "Unable to update the selected history entry."
@@ -658,15 +714,22 @@ const response = await updateShipmentStatus(trackingNumber, {
           credentials: "include",
         }
       );
+
       const refreshedData = await refreshed.json().catch(() => ({}));
+
       if (!refreshed.ok || refreshedData.success === false) {
         throw new Error(
-          refreshedData.message || "Saved, but unable to refresh shipment history."
+          refreshedData.message ||
+            "Saved, but unable to refresh shipment history."
         );
       }
 
-      setHistoryShipment(refreshedData.shipment || refreshedData);
+      setHistoryShipment(
+        refreshedData.shipment || refreshedData
+      );
+
       setSelectedHistoryId("");
+
       setEditHistoryForm({
         status: "",
         location: "",
@@ -674,7 +737,9 @@ const response = await updateShipmentStatus(trackingNumber, {
         eventDateTime: "",
       });
     } catch (saveError) {
-      setHistoryError(saveError.message || "Unable to save history changes.");
+      setHistoryError(
+        saveError.message || "Unable to save history changes."
+      );
     } finally {
       setHistorySaving(false);
     }
@@ -744,6 +809,22 @@ const response = await updateShipmentStatus(trackingNumber, {
               <div>
                 <strong>Shipment updated successfully</strong>
                 <p>{success}</p>
+
+                {updatedShipment?.documentVisibleToCustomer && (
+                  <p>
+                    The uploaded document has been marked visible
+                    to the customer.
+                  </p>
+                )}
+
+                {updatedShipment?.documentVisibleToCustomer === false &&
+                  updatedShipment &&
+                  proofFile === null && (
+                    <p>
+                      Customer visibility was not enabled for this
+                      upload, or no document was attached.
+                    </p>
+                  )}
               </div>
             </div>
           )}
@@ -885,7 +966,7 @@ const response = await updateShipmentStatus(trackingNumber, {
               </small>
             </div>
 
-            {/* OPTIONAL PROOF ATTACHMENT */}
+            {/* OPTIONAL SUPPORTING DOCUMENT */}
             <div className="status-field">
               <label htmlFor="statusProofFile">
                 Supporting Documents
@@ -921,6 +1002,7 @@ const response = await updateShipmentStatus(trackingNumber, {
                         ? "Replace selected attachment"
                         : "Choose a file to attach"}
                     </strong>
+
                     <span>
                       or click to browse from your device
                     </span>
@@ -938,30 +1020,75 @@ const response = await updateShipmentStatus(trackingNumber, {
               </div>
 
               {proofFile && (
-                <div className="status-selected-file">
-                  <span className="status-file-type">
-                    {getFileExtension(proofFile.name).toUpperCase()}
-                  </span>
-
-                  <div className="status-file-information">
-                    <strong title={proofFile.name}>
-                      {proofFile.name}
-                    </strong>
-                    <span>
-                      {(proofFile.size / (1024 * 1024)).toFixed(2)} MB
+                <>
+                  <div className="status-selected-file">
+                    <span className="status-file-type">
+                      {getFileExtension(proofFile.name).toUpperCase()}
                     </span>
+
+                    <div className="status-file-information">
+                      <strong title={proofFile.name}>
+                        {proofFile.name}
+                      </strong>
+
+                      <span>
+                        {(proofFile.size / (1024 * 1024)).toFixed(2)} MB
+                      </span>
+                    </div>
+
+                    <button
+                      type="button"
+                      className="status-remove-file"
+                      onClick={removeProofFile}
+                      disabled={loading}
+                      aria-label="Remove selected attachment"
+                    >
+                      Remove
+                    </button>
                   </div>
 
-                  <button
-                    type="button"
-                    className="status-remove-file"
-                    onClick={removeProofFile}
-                    disabled={loading}
-                    aria-label="Remove selected attachment"
-                  >
-                    Remove
-                  </button>
-                </div>
+                  {/* CUSTOMER VISIBILITY CHECKBOX */}
+                  <div className="status-document-visibility">
+                    <label
+                      className="status-visibility-label"
+                      htmlFor="visibleToCustomer"
+                    >
+                      <input
+                        id="visibleToCustomer"
+                        type="checkbox"
+                        checked={visibleToCustomer}
+                        onChange={handleVisibilityChange}
+                        disabled={loading}
+                      />
+
+                      <span className="status-visibility-checkbox">
+                        <CheckIcon />
+                      </span>
+
+                      <span className="status-visibility-copy">
+                        <strong>Visible to Customer</strong>
+                        <small>
+                          Allow the customer to view and download
+                          this document from the shipment tracking page.
+                        </small>
+                      </span>
+                    </label>
+
+                    <div
+                      className={`status-visibility-status ${
+                        visibleToCustomer
+                          ? "is-visible"
+                          : "is-private"
+                      }`}
+                    >
+                      <span className="status-visibility-status-dot" />
+
+                      {visibleToCustomer
+                        ? "Customer can view this document"
+                        : "Private document - Admin only"}
+                    </div>
+                  </div>
+                </>
               )}
             </div>
 
@@ -1012,6 +1139,7 @@ const response = await updateShipmentStatus(trackingNumber, {
                 <span className="status-sidebar-eyebrow">
                   TRACKING OVERVIEW
                 </span>
+
                 <h2>Shipment Progress</h2>
               </div>
 
@@ -1051,6 +1179,7 @@ const response = await updateShipmentStatus(trackingNumber, {
 
             <div className="status-sidebar-note">
               <span className="status-note-icon">i</span>
+
               <p>
                 Record the actual shipment event date and time.
                 Delays, cancellations, and unsuccessful delivery
@@ -1071,6 +1200,7 @@ const response = await updateShipmentStatus(trackingNumber, {
                   <span className="status-sidebar-eyebrow">
                     LAST SUBMITTED EVENT
                   </span>
+
                   <h2>Update Saved</h2>
                 </div>
               </div>
@@ -1089,6 +1219,7 @@ const response = await updateShipmentStatus(trackingNumber, {
 
               <div className="status-latest-row">
                 <span>Current Status</span>
+
                 <strong
                   className={`status-latest-badge status-tone-${getStatusTone(
                     updatedShipment.currentStatus
@@ -1114,11 +1245,19 @@ const response = await updateShipmentStatus(trackingNumber, {
                 <span>Event Time (IST)</span>
                 <strong>{updatedShipment.currentTime || "—"}</strong>
               </div>
+
+              {updatedShipment.documentVisibleToCustomer && (
+                <div className="status-latest-row">
+                  <span>Document Visibility</span>
+                  <strong>Visible to Customer</strong>
+                </div>
+              )}
             </section>
           )}
 
           <div className="status-security-note">
             <span className="status-security-icon">✓</span>
+
             <p>
               <strong>Operational accuracy matters.</strong>{" "}
               Verify the tracking number, actual location, status,
@@ -1134,6 +1273,7 @@ const response = await updateShipmentStatus(trackingNumber, {
           <div className="status-heading-icon">
             <PackageIcon />
           </div>
+
           <div>
             <h2>Edit Already Updated Status</h2>
             <p>
@@ -1144,8 +1284,12 @@ const response = await updateShipmentStatus(trackingNumber, {
         </div>
 
         {historyError && (
-          <div className="status-message status-message-error" role="alert">
+          <div
+            className="status-message status-message-error"
+            role="alert"
+          >
             <span className="status-message-symbol">!</span>
+
             <div>
               <strong>Unable to edit history</strong>
               <p>{historyError}</p>
@@ -1154,8 +1298,14 @@ const response = await updateShipmentStatus(trackingNumber, {
         )}
 
         {historySuccess && (
-          <div className="status-message status-message-success" role="status">
-            <span className="status-message-symbol"><CheckIcon /></span>
+          <div
+            className="status-message status-message-success"
+            role="status"
+          >
+            <span className="status-message-symbol">
+              <CheckIcon />
+            </span>
+
             <div>
               <strong>History entry updated</strong>
               <p>{historySuccess}</p>
@@ -1163,7 +1313,10 @@ const response = await updateShipmentStatus(trackingNumber, {
           </div>
         )}
 
-        <form className="status-history-search" onSubmit={loadHistoryShipment}>
+        <form
+          className="status-history-search"
+          onSubmit={loadHistoryShipment}
+        >
           <input
             type="text"
             value={historySearch}
@@ -1171,6 +1324,7 @@ const response = await updateShipmentStatus(trackingNumber, {
             placeholder="Enter tracking number or AWD number"
             aria-label="Search shipment for history editing"
           />
+
           <button type="submit" disabled={historyLoading}>
             {historyLoading ? "Searching..." : "Find Shipment"}
           </button>
@@ -1183,14 +1337,18 @@ const response = await updateShipmentStatus(trackingNumber, {
                 <span>TRACKING NUMBER</span>
                 <strong>{historyShipment.trackingNumber}</strong>
               </div>
+
               <div>
                 <span>AWD NUMBER</span>
                 <strong>{historyShipment.awdNumber || "—"}</strong>
               </div>
+
               <div>
                 <span>CURRENT STATUS</span>
                 <strong>
-                  {historyShipment.currentStatus || historyShipment.status || "—"}
+                  {historyShipment.currentStatus ||
+                    historyShipment.status ||
+                    "—"}
                 </strong>
               </div>
             </div>
@@ -1206,6 +1364,7 @@ const response = await updateShipmentStatus(trackingNumber, {
                     <th>Action</th>
                   </tr>
                 </thead>
+
                 <tbody>
                   {[...(historyShipment.history || [])]
                     .sort(
@@ -1217,11 +1376,14 @@ const response = await updateShipmentStatus(trackingNumber, {
                       <tr
                         key={entry._id || `${entry.timestamp}-${index}`}
                         className={
-                          selectedHistoryId === entry._id ? "is-selected" : ""
+                          selectedHistoryId === entry._id
+                            ? "is-selected"
+                            : ""
                         }
                       >
                         <td>{entry.status || "—"}</td>
                         <td>{entry.location || "—"}</td>
+
                         <td>
                           {entry.timestamp
                             ? new Intl.DateTimeFormat("en-IN", {
@@ -1235,7 +1397,9 @@ const response = await updateShipmentStatus(trackingNumber, {
                               }).format(new Date(entry.timestamp))
                             : "—"}
                         </td>
+
                         <td>{entry.remarks || "—"}</td>
+
                         <td>
                           <button
                             type="button"
@@ -1261,11 +1425,18 @@ const response = await updateShipmentStatus(trackingNumber, {
         )}
 
         {selectedHistoryId && (
-          <form className="status-history-edit-form" onSubmit={saveHistoryEntry}>
+          <form
+            className="status-history-edit-form"
+            onSubmit={saveHistoryEntry}
+          >
             <h3>Edit Selected History Entry</h3>
+
             <div className="status-history-edit-grid">
               <div className="status-field">
-                <label htmlFor="editHistoryStatus">Shipment Status *</label>
+                <label htmlFor="editHistoryStatus">
+                  Shipment Status *
+                </label>
+
                 <select
                   id="editHistoryStatus"
                   name="status"
@@ -1282,7 +1453,10 @@ const response = await updateShipmentStatus(trackingNumber, {
               </div>
 
               <div className="status-field">
-                <label htmlFor="editHistoryLocation">Location *</label>
+                <label htmlFor="editHistoryLocation">
+                  Location *
+                </label>
+
                 <input
                   id="editHistoryLocation"
                   name="location"
@@ -1293,7 +1467,10 @@ const response = await updateShipmentStatus(trackingNumber, {
               </div>
 
               <div className="status-field">
-                <label htmlFor="editHistoryDateTime">Event Date &amp; Time (IST) *</label>
+                <label htmlFor="editHistoryDateTime">
+                  Event Date &amp; Time (IST) *
+                </label>
+
                 <input
                   id="editHistoryDateTime"
                   type="datetime-local"
@@ -1305,7 +1482,10 @@ const response = await updateShipmentStatus(trackingNumber, {
               </div>
 
               <div className="status-field">
-                <label htmlFor="editHistoryRemarks">Remarks</label>
+                <label htmlFor="editHistoryRemarks">
+                  Remarks
+                </label>
+
                 <textarea
                   id="editHistoryRemarks"
                   name="remarks"
@@ -1325,18 +1505,20 @@ const response = await updateShipmentStatus(trackingNumber, {
               >
                 Cancel
               </button>
+
               <button
                 type="submit"
                 className="status-submit-button"
                 disabled={historySaving}
               >
-                {historySaving ? "Saving..." : "Save Edited Entry"}
+                {historySaving
+                  ? "Saving..."
+                  : "Save Edited Entry"}
               </button>
             </div>
           </form>
         )}
       </section>
-
     </main>
   );
 }

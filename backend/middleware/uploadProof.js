@@ -1,7 +1,17 @@
+
 const multer = require("multer");
 const path = require("path");
 
-const MAX_FILE_SIZE = 10 * 1024 * 1024;
+// --------------------------------------------------
+// FILE UPLOAD CONFIGURATION
+// --------------------------------------------------
+
+const MAX_FILE_SIZE = 10 * 1024 * 1024; // 10 MB
+const MAX_FILES = 1;
+
+// --------------------------------------------------
+// ALLOWED FILE TYPES
+// --------------------------------------------------
 
 const allowedTypes = {
   ".jpg": ["image/jpeg"],
@@ -15,31 +25,70 @@ const allowedTypes = {
   ],
 };
 
-const uploadProof = multer({
-  storage: multer.memoryStorage(),
+// --------------------------------------------------
+// FILE STORAGE
+// --------------------------------------------------
 
-  limits: {
-    fileSize: MAX_FILE_SIZE,
-    files: 1,
-  },
+// Memory storage is required because the controller
+// saves uploaded files into MongoDB GridFS.
 
-  fileFilter: (req, file, callback) => {
-    const extension = path.extname(file.originalname).toLowerCase();
+const storage = multer.memoryStorage();
+
+// --------------------------------------------------
+// FILE VALIDATION
+// --------------------------------------------------
+
+const fileFilter = (req, file, callback) => {
+  try {
+    const extension = path
+      .extname(file.originalname || "")
+      .toLowerCase();
+
     const acceptedMimeTypes = allowedTypes[extension];
 
-    if (
-      !acceptedMimeTypes ||
-      !acceptedMimeTypes.includes(file.mimetype)
-    ) {
+    // Check extension.
+
+    if (!acceptedMimeTypes) {
       return callback(
         new Error(
-          "Unsupported file type. Use JPG, JPEG, PNG, WEBP, PDF, DOC, or DOCX."
+          "Unsupported file extension. Allowed formats: JPG, JPEG, PNG, WEBP, PDF, DOC, DOCX."
+        )
+      );
+    }
+
+    // Check MIME type.
+
+    if (!acceptedMimeTypes.includes(file.mimetype)) {
+      return callback(
+        new Error(
+          "Invalid file type. Please upload a valid JPG, JPEG, PNG, WEBP, PDF, DOC, or DOCX file."
         )
       );
     }
 
     callback(null, true);
+  } catch (error) {
+    callback(error);
+  }
+};
+
+// --------------------------------------------------
+// MULTER CONFIGURATION
+// --------------------------------------------------
+
+const uploadProof = multer({
+  storage,
+
+  limits: {
+    fileSize: MAX_FILE_SIZE,
+    files: MAX_FILES,
   },
+
+  fileFilter,
 });
+
+// --------------------------------------------------
+// EXPORT MIDDLEWARE
+// --------------------------------------------------
 
 module.exports = uploadProof;

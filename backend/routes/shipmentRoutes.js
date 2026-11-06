@@ -10,7 +10,11 @@ const { protect } = require("../middleware/authMiddleware");
    SPEED EXPRESS - SHIPMENT ROUTES
 
    Admin and authenticated staff users can manage shipments.
-   Public customers can still track a shipment by its number.
+
+   Public customers can:
+   - Track shipments.
+   - View customer-approved supporting documents.
+   - Download customer-approved supporting documents.
 ========================================================= */
 
 /* ---------------------------------------------------------
@@ -18,6 +22,7 @@ const { protect } = require("../middleware/authMiddleware");
    POST /api/shipments
    Admin + Staff
 --------------------------------------------------------- */
+
 router.post(
   "/",
   protect,
@@ -29,6 +34,7 @@ router.post(
    GET /api/shipments
    Admin + Staff
 --------------------------------------------------------- */
+
 router.get(
   "/",
   protect,
@@ -39,7 +45,13 @@ router.get(
    3. UPDATE SHIPMENT STATUS
    PATCH /api/shipments/:trackingNumber/status
    Admin + Staff
+
+   Supports:
+   - Existing proof of delivery upload (proofFile).
+   - Supporting document upload.
+   - Customer visibility checkbox (visibleToCustomer).
 --------------------------------------------------------- */
+
 router.patch(
   "/:trackingNumber/status",
   protect,
@@ -52,6 +64,7 @@ router.patch(
    PATCH /api/shipments/:trackingNumber/history/:historyId
    Admin + Staff
 --------------------------------------------------------- */
+
 router.patch(
   "/:trackingNumber/history/:historyId",
   protect,
@@ -63,6 +76,7 @@ router.patch(
    GET /api/shipments/:trackingNumber/label
    Admin + Staff
 --------------------------------------------------------- */
+
 router.get(
   "/:trackingNumber/label",
   protect,
@@ -74,6 +88,7 @@ router.get(
    PATCH /api/shipments/:trackingNumber
    Admin + Staff
 --------------------------------------------------------- */
+
 router.patch(
   "/:trackingNumber",
   protect,
@@ -85,6 +100,7 @@ router.patch(
    DELETE /api/shipments/:trackingNumber
    Admin + Staff
 --------------------------------------------------------- */
+
 router.delete(
   "/:trackingNumber",
   protect,
@@ -92,12 +108,38 @@ router.delete(
 );
 
 /* ---------------------------------------------------------
-   8. PUBLIC SHIPMENT TRACKING
+   8. VIEW CUSTOMER-APPROVED SUPPORTING DOCUMENT
+   GET /api/shipments/:trackingNumber/documents/:documentId/view
+
+   Public customer access:
+   - Only documents with visibleToCustomer = true.
+--------------------------------------------------------- */
+
+router.get(
+  "/:trackingNumber/documents/:documentId/view",
+  shipmentController.viewSupportingDocument
+);
+
+/* ---------------------------------------------------------
+   9. DOWNLOAD CUSTOMER-APPROVED SUPPORTING DOCUMENT
+   GET /api/shipments/:trackingNumber/documents/:documentId/download
+
+   Public customer access:
+   - Only documents with visibleToCustomer = true.
+--------------------------------------------------------- */
+
+router.get(
+  "/:trackingNumber/documents/:documentId/download",
+  shipmentController.downloadSupportingDocument
+);
+
+/* ---------------------------------------------------------
+   10. PUBLIC SHIPMENT TRACKING
    GET /api/shipments/:trackingNumber
 
-   Kept public so customers can track shipments
-   from the public Speed Express Tracking page.
+   Customers can track shipments without logging in.
 --------------------------------------------------------- */
+
 router.get(
   "/:trackingNumber",
   shipmentController.getShipmentByTrackingNumber

@@ -1,3 +1,4 @@
+
 const mongoose = require("mongoose");
 const { GridFSBucket, ObjectId } = require("mongodb");
 const { Readable } = require("stream");
@@ -6,6 +7,18 @@ const Shipment = require("../models/Shipment");
 const generateShippingLabel = require("../utils/generateShippingLabel");
 
 const PROOF_BUCKET_NAME = "shipmentProofs";
+
+const ALLOWED_DOCUMENT_EXTENSIONS = [
+  ".jpg",
+  ".jpeg",
+  ".png",
+  ".webp",
+  ".pdf",
+  ".doc",
+  ".docx",
+];
+
+const MAX_DOCUMENT_SIZE = 10 * 1024 * 1024;
 
 /* =========================================================
    INDIA DATE/TIME HELPERS
@@ -55,7 +68,7 @@ const clean = (value) => {
   return String(value).trim();
 };
 
-const validateOptionalNumber = (value, fieldName) => {
+const validateOptionalNumber = (value) => {
   if (
     value === undefined ||
     value === null ||
@@ -100,7 +113,42 @@ const validateBookingTime = (value) =>
   /^(?:[01]\d|2[0-3]):[0-5]\d$/.test(value);
 
 /* =========================================================
-   GRIDFS PROOF HELPERS
+   DOCUMENT HELPERS
+========================================================= */
+
+const getDocumentExtension = (filename = "") => {
+  const lastDot = filename.lastIndexOf(".");
+
+  return lastDot >= 0
+    ? filename.substring(lastDot).toLowerCase()
+    : "";
+};
+
+const isCustomerVisible = (value) =>
+  String(value).trim().toLowerCase() === "true";
+
+const validateSupportingDocument = (file) => {
+  if (!file) return null;
+
+  const extension = getDocumentExtension(file.originalname);
+
+  if (!ALLOWED_DOCUMENT_EXTENSIONS.includes(extension)) {
+    return "Unsupported document format. Allowed formats: JPG, JPEG, PNG, WEBP, PDF, DOC and DOCX.";
+  }
+
+  if (file.size > MAX_DOCUMENT_SIZE) {
+    return "Document size must not exceed 10 MB.";
+  }
+
+  if (!file.buffer || !Buffer.isBuffer(file.buffer)) {
+    return "Uploaded document data is missing. Please check the upload middleware.";
+  }
+
+  return null;
+};
+
+/* =========================================================
+   GRIDFS PROOF AND DOCUMENT HELPERS
 ========================================================= */
 
 const getProofBucket = () => {
@@ -118,22 +166,25 @@ const getProofBucket = () => {
 const saveProof = async (file, trackingNumber) => {
   if (!file || !file.buffer) {
     throw new Error(
-      "Uploaded proof is missing file data. Check upload middleware."
+      "Uploaded file is missing file data. Check upload middleware."
     );
   }
 
   const bucket = getProofBucket();
 
-  const filename = `${Date.now()}-${String(
-    file.originalname || "shipment-proof"
-  ).replace(/[^a-zA-Z0-9._-]/g, "_")}`;
+  const originalName = file.originalname || "shipment-document";
+
+  const filename = `${Date.now()}-${String(originalName).replace(
+    /[^a-zA-Z0-9._-]/g,
+    "_"
+  )}`;
 
   return new Promise((resolve, reject) => {
     const uploadStream = bucket.openUploadStream(filename, {
       contentType: file.mimetype || "application/octet-stream",
       metadata: {
         trackingNumber,
-        originalName: file.originalname || filename,
+        originalName,
       },
     });
 
@@ -151,11 +202,11 @@ const saveProof = async (file, trackingNumber) => {
 };
 
 const deleteProof = async (fileId) => {
-  if (!fileId) return;
+  if (!fileId || !mongoose.isValidObjectId(String(fileId))) {
+    return;
+  }
 
-  const id = new ObjectId(String(fileId));
-
-  await getProofBucket().delete(id);
+  await getProofBucket().delete(new ObjectId(String(fileId)));
 };
 
 /* =========================================================
@@ -271,8 +322,6 @@ const createShipment = async (req, res) => {
       });
     }
 
-    // If omitted, use current India date/time.
-    // If explicitly blank, save null.
     const indiaNow = getIndiaBookingDateTime();
 
     const bookingDate = hasOwn(req.body, "bookingDate")
@@ -414,7 +463,7 @@ const getAllShipments = async (req, res) => {
 };
 
 /* =========================================================
-   GET SHIPMENT BY TRACKING NUMBER OR AWD NUMBER
+   GET PUBLIC SHIPMENT BY TRACKING NUMBER OR AWD NUMBER
    GET /api/shipments/:trackingNumber
 ========================================================= */
 
@@ -438,9 +487,36 @@ const getShipmentByTrackingNumber = async (req, res) => {
       });
     }
 
+    const shipmentData = shipment.toObject();
+
+    // Return only documents explicitly approved for customers.
+    // Never expose the GridFS fileId in the public tracking response.
+    shipmentData.supportingDocuments = (
+      shipment.supportingDocuments || []
+    )
+      .filter(
+        (document) => document.visibleToCustomer === true
+      )
+      .map((document) => ({
+        _id: String(document._id),
+        documentId: String(document._id),
+        originalName:
+          document.originalName ||
+          document.filename ||
+          "Shipment document",
+        filename:
+          document.originalName ||
+          document.filename ||
+          "Shipment document",
+        contentType:
+          document.contentType || "application/octet-stream",
+        size: Number(document.size || 0),
+        uploadedAt: document.uploadedAt || null,
+      }));
+
     return res.status(200).json({
       success: true,
-      shipment,
+      shipment: shipmentData,
     });
   } catch (error) {
     console.error("Get shipment error:", error);
@@ -452,7 +528,6 @@ const getShipmentByTrackingNumber = async (req, res) => {
     });
   }
 };
-
 /* =========================================================
    UPDATE SHIPMENT DETAILS
    PATCH /api/shipments/:trackingNumber
@@ -506,10 +581,7 @@ const updateShipment = async (req, res) => {
     }
 
     if (hasOwn(req.body, "weight")) {
-      const weight = validateOptionalNumber(
-        req.body.weight,
-        "weight"
-      );
+      const weight = validateOptionalNumber(req.body.weight);
 
       if (weight === null) {
         return res.status(400).json({
@@ -524,8 +596,7 @@ const updateShipment = async (req, res) => {
 
     if (hasOwn(req.body, "productCount")) {
       const productCount = validateOptionalNumber(
-        req.body.productCount,
-        "productCount"
+        req.body.productCount
       );
 
       if (
@@ -731,7 +802,6 @@ const updateShipmentHistoryEntry = async (req, res) => {
         });
       }
 
-      // datetime-local is interpreted as India time.
       const timestamp =
         /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}$/.test(value)
           ? new Date(`${value}:00+05:30`)
@@ -747,7 +817,6 @@ const updateShipmentHistoryEntry = async (req, res) => {
       entry.timestamp = timestamp;
     }
 
-    // Find the latest history event by timestamp.
     const latestEntry = shipment.history.reduce((latest, item) => {
       if (!latest) return item;
 
@@ -757,8 +826,6 @@ const updateShipmentHistoryEntry = async (req, res) => {
         : latest;
     }, null);
 
-    // Synchronize main shipment fields only if the edited
-    // entry is the latest history event.
     if (
       latestEntry &&
       String(latestEntry._id) === String(entry._id)
@@ -769,7 +836,6 @@ const updateShipmentHistoryEntry = async (req, res) => {
       shipment.remarks = entry.remarks || "";
     }
 
-    // Prevent automatic duplicate history.
     shipment.$locals.skipAutomaticHistory = true;
 
     await shipment.save();
@@ -803,7 +869,7 @@ const updateShipmentHistoryEntry = async (req, res) => {
 };
 
 /* =========================================================
-   UPDATE SHIPMENT STATUS
+   UPDATE SHIPMENT STATUS + OPTIONAL SUPPORTING DOCUMENT
    PATCH /api/shipments/:trackingNumber/status
 ========================================================= */
 
@@ -871,15 +937,44 @@ const updateShipmentStatus = async (req, res) => {
       shipment.history = [];
     }
 
-    // Save optional proof of delivery.
+    if (!Array.isArray(shipment.supportingDocuments)) {
+      shipment.supportingDocuments = [];
+    }
+
+    // Validate the optional upload before saving it to GridFS.
     if (req.file) {
-      const proof = await saveProof(
+      const validationError = validateSupportingDocument(req.file);
+
+      if (validationError) {
+        return res.status(400).json({
+          success: false,
+          message: validationError,
+        });
+      }
+
+      const savedFile = await saveProof(
         req.file,
         shipment.trackingNumber
       );
 
-      uploadedProofId = proof.fileId.toString();
+      uploadedProofId = savedFile.fileId.toString();
+
+      // Preserve existing proof-of-delivery behaviour.
       shipment.proofOfDelivery = uploadedProofId;
+
+      // Add a separate supporting document record.
+      shipment.supportingDocuments.push({
+        fileId: uploadedProofId,
+        filename: savedFile.filename,
+        originalName: req.file.originalname || savedFile.filename,
+        contentType:
+          req.file.mimetype || "application/octet-stream",
+        size: Number(req.file.size || req.file.buffer.length),
+        uploadedAt: new Date(),
+        visibleToCustomer: isCustomerVisible(
+          req.body.visibleToCustomer
+        ),
+      });
     }
 
     shipment.status = status;
@@ -888,6 +983,7 @@ const updateShipmentStatus = async (req, res) => {
     shipment.remarks = remarks;
 
     // Add a NEW status-history entry.
+    // Document visibility does not create a separate history event.
     shipment.history.push({
       status,
       location: currentLocation,
@@ -895,7 +991,6 @@ const updateShipmentStatus = async (req, res) => {
       timestamp: eventTimestamp,
     });
 
-    // Prevent automatic duplicate history.
     shipment.$locals.skipAutomaticHistory = true;
 
     await shipment.save();
@@ -914,7 +1009,7 @@ const updateShipmentStatus = async (req, res) => {
         await deleteProof(uploadedProofId);
       } catch (cleanupError) {
         console.error(
-          "Proof cleanup error:",
+          "Supporting document cleanup error:",
           cleanupError.message
         );
       }
@@ -947,6 +1042,123 @@ const updateShipmentStatus = async (req, res) => {
 };
 
 /* =========================================================
+   VIEW / DOWNLOAD CUSTOMER-VISIBLE SUPPORTING DOCUMENTS
+========================================================= */
+
+const findCustomerVisibleDocument = (shipment, documentId) => {
+  if (!Array.isArray(shipment.supportingDocuments)) {
+    return null;
+  }
+
+  return (
+    shipment.supportingDocuments.find(
+      (document) =>
+        String(document._id) === String(documentId) &&
+        document.visibleToCustomer === true
+    ) || null
+  );
+};
+
+const sendSupportingDocument = async (req, res, disposition) => {
+  try {
+    const { trackingNumber, documentId } = req.params;
+
+    if (!mongoose.isValidObjectId(documentId)) {
+      return res.status(404).json({
+        success: false,
+        message: "Document not found.",
+      });
+    }
+
+    const shipment = await findShipmentByIdentifier(trackingNumber);
+
+    if (!shipment) {
+      return res.status(404).json({
+        success: false,
+        message: "Shipment not found.",
+      });
+    }
+
+    const document = findCustomerVisibleDocument(
+      shipment,
+      documentId
+    );
+
+    if (
+      !document ||
+      !document.fileId ||
+      !mongoose.isValidObjectId(String(document.fileId))
+    ) {
+      return res.status(404).json({
+        success: false,
+        message: "Document not found.",
+      });
+    }
+
+    const bucket = getProofBucket();
+    const fileId = new ObjectId(String(document.fileId));
+
+    const files = await bucket.find({ _id: fileId }).toArray();
+
+    if (!files.length) {
+      return res.status(404).json({
+        success: false,
+        message: "Document file is unavailable.",
+      });
+    }
+
+    const safeFilename = String(
+      document.originalName || "shipment-document"
+    ).replace(/[\r\n"]/g, "_");
+
+    res.setHeader(
+      "Content-Type",
+      document.contentType || "application/octet-stream"
+    );
+
+    res.setHeader(
+      "Content-Disposition",
+      `${disposition}; filename="${safeFilename}"`
+    );
+
+    res.setHeader("X-Content-Type-Options", "nosniff");
+    res.setHeader("Cache-Control", "private, no-store");
+
+    const downloadStream = bucket.openDownloadStream(fileId);
+
+    downloadStream.on("error", (error) => {
+      console.error("Supporting document stream error:", error);
+
+      if (!res.headersSent) {
+        res.status(500).json({
+          success: false,
+          message: "Unable to retrieve document.",
+        });
+      } else {
+        res.destroy(error);
+      }
+    });
+
+    downloadStream.pipe(res);
+  } catch (error) {
+    console.error("Supporting document error:", error);
+
+    if (!res.headersSent) {
+      res.status(500).json({
+        success: false,
+        message: "Unable to retrieve document.",
+      });
+    }
+  }
+};
+
+const viewSupportingDocument = (req, res) =>
+  sendSupportingDocument(req, res, "inline");
+
+const downloadSupportingDocument = (req, res) =>
+  sendSupportingDocument(req, res, "attachment");
+
+/* =========================================================
    DELETE SHIPMENT
    DELETE /api/shipments/:trackingNumber
 ========================================================= */
@@ -971,6 +1183,37 @@ const deleteShipment = async (req, res) => {
         success: false,
         message: `Shipment ${identifier} was not found.`,
       });
+    }
+
+    // Delete supporting documents from GridFS when possible.
+    const fileIds = new Set();
+
+    if (
+      shipment.proofOfDelivery &&
+      mongoose.isValidObjectId(String(shipment.proofOfDelivery))
+    ) {
+      fileIds.add(String(shipment.proofOfDelivery));
+    }
+
+    for (const document of shipment.supportingDocuments || []) {
+      if (
+        document.fileId &&
+        mongoose.isValidObjectId(String(document.fileId))
+      ) {
+        fileIds.add(String(document.fileId));
+      }
+    }
+
+    for (const fileId of fileIds) {
+      try {
+        await deleteProof(fileId);
+      } catch (fileError) {
+        // A missing GridFS file should not prevent shipment deletion.
+        console.warn(
+          `Could not delete GridFS file ${fileId}:`,
+          fileError.message
+        );
+      }
     }
 
     await Shipment.deleteOne({ _id: shipment._id });
@@ -1045,4 +1288,6 @@ module.exports = {
   updateShipment,
   deleteShipment,
   getShipmentByTrackingNumber,
+  viewSupportingDocument,
+  downloadSupportingDocument,
 };

@@ -1,3 +1,4 @@
+
 const mongoose = require("mongoose");
 
 // --------------------------------------------------
@@ -73,6 +74,58 @@ const shipmentHistorySchema = new mongoose.Schema(
 );
 
 // --------------------------------------------------
+// SUPPORTING DOCUMENT SCHEMA
+// --------------------------------------------------
+
+const supportingDocumentSchema = new mongoose.Schema(
+  {
+    fileId: {
+      type: String,
+      required: true,
+    },
+
+    filename: {
+      type: String,
+      required: true,
+      trim: true,
+    },
+
+    originalName: {
+      type: String,
+      required: true,
+      trim: true,
+    },
+
+    contentType: {
+      type: String,
+      default: "application/octet-stream",
+    },
+
+    size: {
+      type: Number,
+      default: 0,
+      min: 0,
+    },
+
+    uploadedAt: {
+      type: Date,
+      default: Date.now,
+    },
+
+    // Unchecked by default.
+    // Admin must explicitly enable customer visibility.
+
+    visibleToCustomer: {
+      type: Boolean,
+      default: false,
+    },
+  },
+  {
+    timestamps: false,
+  }
+);
+
+// --------------------------------------------------
 // MAIN SHIPMENT SCHEMA
 // --------------------------------------------------
 
@@ -97,7 +150,6 @@ const shipmentSchema = new mongoose.Schema(
 
     // OPTIONAL BOOKING DATE
     // Format: YYYY-MM-DD
-    // Can be null when cleared by admin.
 
     bookingDate: {
       type: String,
@@ -107,7 +159,6 @@ const shipmentSchema = new mongoose.Schema(
 
     // OPTIONAL BOOKING TIME
     // Format: HH:mm (24-hour format)
-    // Can be null when cleared by admin.
 
     bookingTime: {
       type: String,
@@ -252,7 +303,16 @@ const shipmentSchema = new mongoose.Schema(
       default: [],
     },
 
+    // SUPPORTING DOCUMENTS
+    // Files are stored in GridFS bucket: shipmentProofs
+
+    supportingDocuments: {
+      type: [supportingDocumentSchema],
+      default: [],
+    },
+
     // PROOF OF DELIVERY
+    // Existing functionality preserved.
 
     proofOfDelivery: {
       type: String,
@@ -272,6 +332,7 @@ const shipmentSchema = new mongoose.Schema(
 shipmentSchema.pre("save", function (next) {
   try {
     // Normalize legacy status values and synchronize fields.
+
     const normalizedStatus = normalizeStatus(this.status);
 
     this.status = normalizedStatus;
@@ -279,12 +340,14 @@ shipmentSchema.pre("save", function (next) {
 
     // If controller already appended a history event,
     // do not append another event automatically.
+
     if (this.$locals.skipAutomaticHistory) {
       this.$locals.skipAutomaticHistory = false;
       return next();
     }
 
     // Initial history for newly created shipments.
+
     if (this.isNew) {
       this.history.push({
         status: this.status,
@@ -298,8 +361,9 @@ shipmentSchema.pre("save", function (next) {
       this.isModified("currentLocation") ||
       this.isModified("remarks")
     ) {
-      // Record changes to shipment status details.
-      // Booking date/time changes alone do not enter this branch.
+      // Record status-related changes.
+      // Supporting document uploads alone do not create history.
+
       this.history.push({
         status: this.status,
         location: this.currentLocation || "",
